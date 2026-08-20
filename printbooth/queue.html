@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>คิวปริ้น</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: #0a0a0f;
+    color: #f2f2f5;
+    font-family: "Sarabun", "Segoe UI", system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 28px;
+    padding: 40px;
+    text-align: center;
+    overflow: hidden;
+  }
+  .label {
+    font-size: clamp(20px, 2.6vw, 34px);
+    color: #9a9aa8;
+    letter-spacing: 2px;
+  }
+  .number {
+    font-size: clamp(160px, 32vw, 460px);
+    font-weight: 800;
+    line-height: 1;
+    color: #ffd166;
+    text-shadow: 0 10px 60px rgba(255, 209, 102, .25);
+    transition: transform .25s ease;
+  }
+  .number.pop { animation: pop .6s ease; }
+  @keyframes pop {
+    0% { transform: scale(1); }
+    30% { transform: scale(1.08); }
+    100% { transform: scale(1); }
+  }
+  .placeholder { color: #3a3a46; }
+  .waiting {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: 90vw;
+  }
+  .chip {
+    background: #1b1b24;
+    border: 1px solid #2a2a36;
+    border-radius: 999px;
+    padding: 10px 24px;
+    font-size: clamp(20px, 2vw, 28px);
+    font-weight: 700;
+    color: #cfcfe0;
+  }
+  .waiting-label { color: #9a9aa8; font-size: 16px; margin-bottom: -6px; }
+  .empty { color: #55555f; font-size: 20px; }
+</style>
+</head>
+<body>
+  <div class="label">กำลังพิมพ์คิวหมายเลข</div>
+  <div class="number placeholder" id="number">-</div>
+
+  <div class="waiting-label" id="waiting-label" hidden>รอคิวถัดไป</div>
+  <div class="waiting" id="waiting"></div>
+
+<script>
+const numberEl = document.getElementById('number');
+const waitingEl = document.getElementById('waiting');
+const waitingLabelEl = document.getElementById('waiting-label');
+let shown = null;
+
+async function tick() {
+  try {
+    const r = await fetch('/api/board');
+    const d = await r.json();
+
+    const n = d.latest ? d.latest.queueNumber : null;
+    if (n !== shown) {
+      shown = n;
+      numberEl.textContent = n ? '#' + n : '-';
+      numberEl.classList.toggle('placeholder', !n);
+      numberEl.classList.remove('pop');
+      void numberEl.offsetWidth;
+      numberEl.classList.add('pop');
+    }
+
+    const waiting = (d.waiting || []).filter((w) => w !== n);
+    if (waiting.length) {
+      waitingLabelEl.hidden = false;
+      waitingEl.innerHTML = waiting.slice(0, 12).map((w) => '<div class="chip">#' + w + '</div>').join('');
+    } else {
+      waitingLabelEl.hidden = true;
+      waitingEl.innerHTML = shown ? '' : '<div class="empty">ยังไม่มีคิว</div>';
+    }
+  } catch {
+    // เน็ตสะดุด — รอรอบถัดไป ไม่ต้องโชว์ error กวนจอบอร์ด
+  }
+}
+
+tick();
+setInterval(tick, 3000);
+</script>
+</body>
+</html>

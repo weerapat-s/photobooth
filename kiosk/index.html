@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Photo Booth</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <section class="screen" id="screen-idle">
+    <div class="idle-inner">
+      <h1 id="event-title">Photo Booth</h1>
+      <p class="sub" id="idle-sub">แตะที่หน้าจอเพื่อเริ่มถ่าย</p>
+      <button class="big-btn" id="btn-start">เริ่มถ่าย</button>
+      <p class="hint" id="idle-hint"></p>
+    </div>
+  </section>
+
+  <section class="screen" id="screen-shoot" hidden>
+    <div class="stage">
+      <img id="liveview" alt="">
+      <img id="lastshot" alt="" hidden>
+      <div class="flash" id="flash"></div>
+      <div class="count" id="count"></div>
+      <div class="badge" id="shot-badge"></div>
+    </div>
+    <div class="shotbar" id="shotbar"></div>
+    <p class="status" id="shoot-status"></p>
+  </section>
+
+  <section class="screen" id="screen-processing" hidden>
+    <div class="spinner"></div>
+    <h2 id="proc-msg">กำลังประมวลผล...</h2>
+    <p class="sub">อีกแป๊บเดียว อย่าเพิ่งไปไหนนะ</p>
+  </section>
+
+  <section class="screen" id="screen-done" hidden>
+    <div class="done-grid">
+      <div class="qr-box">
+        <img id="qr" alt="QR code">
+        <p class="qr-label">สแกนเพื่อรับรูป + วิดีโอ</p>
+        <p class="qr-url" id="share-url"></p>
+      </div>
+      <div class="result-box">
+        <img id="card" alt="">
+        <div class="actions" id="done-actions">
+          <button class="big-btn" id="btn-print">ปริ้นรูป</button>
+          <button class="ghost-btn" id="btn-again">ถ่ายใหม่</button>
+        </div>
+        <p class="queue-number" id="queue-number" hidden></p>
+        <p class="hint" id="print-status"></p>
+      </div>
+    </div>
+    <p class="timer" id="timer"></p>
+  </section>
+
+  <section class="screen" id="screen-error" hidden>
+    <h2>เกิดข้อผิดพลาด</h2>
+    <p class="err" id="err-msg"></p>
+    <button class="ghost-btn" id="btn-back">กลับหน้าแรก</button>
+  </section>
+
+</div>
+<script src="app.js"></script>
+</body>
+</html>

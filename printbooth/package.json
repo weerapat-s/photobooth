@@ -1,0 +1,16 @@
+{
+  "name": "photobooth-print-booth",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "บูทปริ้น — ดึงคิวงานจาก Nextcloud แล้วสั่งพิมพ์ ติดตั้งได้หลายเครื่องพร้อมกัน",
+  "scripts": {
+    "start": "node index.js",
+    "install-shortcuts": "powershell -NoProfile -ExecutionPolicy Bypass -File launch/install-shortcuts.ps1",
+    "uninstall-shortcuts": "powershell -NoProfile -ExecutionPolicy Bypass -File launch/install-shortcuts.ps1 -Uninstall"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0"
+  }
+}

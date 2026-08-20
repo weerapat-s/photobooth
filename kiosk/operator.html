@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>จอช่าง — Photo Booth</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px;
+    background: #0d0d12; color: #f2f2f5;
+    font-family: "Sarabun", "Segoe UI", system-ui, sans-serif;
+  }
+  h1 { font-size: 22px; margin: 0 0 16px; }
+  h2 { font-size: 16px; margin: 0 0 12px; color: #b9b9c6; font-weight: 600; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+  .card { background: #17171f; border: 1px solid #26262f; border-radius: 14px; padding: 18px; }
+  .row { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #23232c; }
+  .row:last-child { border: none; }
+  .row b { color: #9a9aa8; font-weight: 500; }
+  .pill { padding: 3px 12px; border-radius: 999px; font-size: 13px; font-weight: 700; }
+  .pill.idle { background: #2b2b36; color: #b9b9c6; }
+  .pill.shooting { background: #2d5a3d; color: #8ef0ae; }
+  .pill.processing { background: #4a4020; color: #ffd166; }
+  .pill.done { background: #2a3f66; color: #9dc4ff; }
+  .pill.error { background: #5a2531; color: #ff8fa3; }
+  button {
+    font: inherit; font-weight: 600;
+    padding: 11px 20px; border: none; border-radius: 10px;
+    background: #ff4d6d; color: #fff; cursor: pointer;
+  }
+  button.ghost { background: #23232e; color: #e8e8ef; }
+  button:disabled { opacity: .45; cursor: default; }
+  .btns { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
+  input, select {
+    font: inherit; width: 100%;
+    padding: 10px 12px; border-radius: 10px;
+    border: 1px solid #33333f; background: #101018; color: #f2f2f5;
+  }
+  label { display: block; font-size: 13px; color: #9a9aa8; margin: 12px 0 5px; }
+  .thumbs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .thumbs img { height: 84px; border-radius: 8px; }
+  .browser { max-height: 260px; overflow: auto; margin-top: 10px; border: 1px solid #2a2a35; border-radius: 10px; }
+  .browser div { padding: 9px 12px; cursor: pointer; border-bottom: 1px solid #20202a; font-size: 14px; }
+  .browser div:hover { background: #1e1e28; }
+  .ok { color: #8ef0ae; } .bad { color: #ff8fa3; } .warn { color: #ffd166; }
+  .msg { min-height: 20px; font-size: 13px; margin-top: 10px; }
+  code { color: #ffd166; font-size: 12px; word-break: break-all; }
+</style>
+</head>
+<body>
+<h1>จอช่าง — <span id="event-name">Photo Booth</span></h1>
+
+<div class="grid">
+
+  <div class="card">
+    <h2>สถานะ</h2>
+    <div class="row"><b>เซสชัน</b><span class="pill idle" id="phase">-</span></div>
+    <div class="row"><b>ช็อต</b><span id="count">-</span></div>
+    <div class="row"><b>รหัสเซสชัน</b><span id="sid">-</span></div>
+    <div class="row"><b>เลขคิวปริ้น</b><span id="qnum">-</span></div>
+    <div class="row"><b>ข้อความ</b><span id="msg">-</span></div>
+    <div class="thumbs" id="thumbs"></div>
+    <div class="btns">
+      <button id="btn-start">เริ่มถ่าย</button>
+      <button id="btn-finish">ปิดเซสชัน + อัปโหลดเลย</button>
+      <button class="ghost" id="btn-discard">ทิ้งเซสชัน</button>
+      <button class="ghost" id="btn-print">ส่งปริ้น</button>
+      <button class="ghost" id="btn-mock">ยิงช็อตทดสอบ</button>
+    </div>
+    <div class="msg" id="action-msg"></div>
+  </div>
+
+  <div class="card">
+    <h2>ระบบ</h2>
+    <div class="row"><b>กล้อง</b><span id="cam-state">-</span></div>
+    <div class="row"><b>เฝ้าโฟลเดอร์</b><span id="watch-state">-</span></div>
+    <div class="row"><b>โฟลเดอร์</b><code id="watch-dir">-</code></div>
+    <div class="row"><b>Nextcloud</b><span id="nc-state">-</span></div>
+    <div class="row"><b>ลิงก์แยกต่อเซสชัน</b><span id="share-state">-</span></div>
+    <div class="row"><b>ffmpeg</b><span id="ff-state">-</span></div>
+    <div class="row"><b>ลิงก์ล่าสุด</b><code id="last-link">-</code></div>
+  </div>
+
+  <div class="card">
+    <h2>ตั้งค่า</h2>
+    <label>แหล่งภาพ</label>
+    <select id="in-source">
+      <option value="digicam">digicam — แอปคุมกล้องผ่าน digiCamControl (มี live view)</option>
+      <option value="folder">folder — เฝ้าโฟลเดอร์ Capture One (ช่างกดชัตเตอร์เอง)</option>
+      <option value="mock">mock — ภาพปลอม ไว้เทสต์</option>
+    </select>
+
+    <label>นับถอยหลังก่อนแต่ละช็อต (วินาที) — เฉพาะโหมด digicam</label>
+    <input id="in-countdown" type="number" min="0" max="10">
+
+    <label>โฟลเดอร์ Capture ของ Capture One — เฉพาะโหมด folder</label>
+    <input id="in-watch" placeholder="เช่น D:\งานรับน้อง\Capture">
+    <div class="browser" id="browser"></div>
+
+    <label>จำนวนช็อตต่อเซสชัน</label>
+    <input id="in-shots" type="number" min="1" max="8">
+
+    <label>การ์ด/ชีทปริ้นใช้ช็อตล่าสุดกี่ภาพ (วิดีโอยังใช้ครบทุกช็อต)</label>
+    <input id="in-printshots" type="number" min="1" max="8">
+
+    <label>ปิดเซสชันอัตโนมัติถ้าเงียบเกิน (วินาที)</label>
+    <input id="in-idle" type="number" min="5" max="180">
+
+    <label>ชื่องาน (โชว์บนสตริปและจอลูกค้า)</label>
+    <input id="in-event">
+
+    <label>เลย์เอาต์ปริ้น</label>
+    <select id="in-layout">
+      <option value="strip2x6">strip2x6 — สตริป 2x6 สองแถบบนกระดาษ 4x6</option>
+      <option value="grid4x6">grid4x6 — 2x2 เต็มกระดาษ 4x6</option>
+    </select>
+
+    <label>สีพื้นหลังธีมการ์ด/ชีทปริ้น</label>
+    <input id="in-themecolor" type="color">
+
+    <label>ส่งปริ้นอัตโนมัติเมื่อจบเซสชัน</label>
+    <select id="in-autoprint">
+      <option value="false">ไม่ — รอกดเอง</option>
+      <option value="true">ใช่ — ปริ้นทันที</option>
+    </select>
+
+    <div class="btns"><button id="btn-save">บันทึก</button></div>
+    <div class="msg" id="save-msg"></div>
+  </div>
+
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const PHASE_TEXT = { idle: 'ว่าง', shooting: 'กำลังถ่าย', processing: 'กำลังประมวลผล', done: 'เสร็จ รอลูกค้าสแกน', error: 'ผิดพลาด' };
+
+async function api(path, options) {
+  const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...options });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+  return data;
+}
+
+function applyState(s) {
+  $('phase').textContent = PHASE_TEXT[s.phase] || s.phase;
+  $('phase').className = 'pill ' + s.phase;
+  $('count').textContent = s.session ? s.session.count + ' / ' + s.session.total : '-';
+  $('sid').textContent = s.session ? s.session.id : '-';
+  $('qnum').textContent = s.session && s.session.queueNumber ? '#' + s.session.queueNumber : '-';
+  $('msg').textContent = s.message || '-';
+  $('event-name').textContent = s.eventName || 'Photo Booth';
+  $('thumbs').innerHTML = s.session ? s.session.previews.map((u) => '<img src="' + u + '">').join('') : '';
+  if (s.session && s.session.shareUrl) $('last-link').textContent = s.session.shareUrl;
+  $('btn-start').disabled = s.captureSource === 'folder' || s.phase === 'shooting' || s.phase === 'processing';
+  $('btn-finish').disabled = !(s.phase === 'shooting' && s.session && s.session.count > 0);
+  $('btn-discard').disabled = s.phase === 'processing' || s.phase === 'idle';
+  $('btn-print').disabled = !(s.phase === 'done' && s.session && !s.session.printed);
+}
+
+async function refreshHealth() {
+  try {
+    const h = await api('/api/health');
+    $('cam-state').innerHTML = h.camera.ok
+      ? '<span class="ok">' + (h.camera.cameras.length ? h.camera.cameras.join(', ') : h.camera.transport) + '</span>'
+      : '<span class="bad">' + (h.camera.error || 'ไม่พบกล้อง') + '</span>';
+    $('watch-state').innerHTML = h.watch.watching
+      ? '<span class="ok">กำลังเฝ้า</span>'
+      : '<span class="bad">' + (h.watch.error || 'ไม่ได้เฝ้า') + '</span>';
+    $('watch-dir').textContent = h.watch.dir || '(ยังไม่ตั้ง)';
+    $('nc-state').innerHTML = h.nextcloud.ok ? '<span class="ok">ต่อได้</span>' : '<span class="bad">ต่อไม่ได้</span>';
+    $('share-state').innerHTML = h.perSessionShare
+      ? '<span class="ok">พร้อม — ลูกค้าเห็นเฉพาะของตัวเอง</span>'
+      : '<span class="bad">ยังไม่ได้ตั้ง NC_USER/NC_APP_PASSWORD — ห้ามใช้งานจริง ลูกค้าจะเห็นเซสชันคนอื่นได้</span>';
+    $('ff-state').innerHTML = h.ffmpeg ? '<span class="ok">พร้อม</span>' : '<span class="bad">ไม่พบไฟล์</span>';
+  } catch (err) {
+    $('watch-state').innerHTML = '<span class="bad">' + err.message + '</span>';
+  }
+}
+
+async function loadConfig() {
+  const c = await api('/api/config');
+  $('in-source').value = c.captureSource;
+  $('in-countdown').value = c.countdown;
+  $('in-watch').value = c.watchDir || '';
+  $('in-shots').value = c.shots;
+  $('in-printshots').value = c.printShots;
+  $('in-idle').value = c.sessionIdleSeconds;
+  $('in-event').value = c.eventName;
+  $('in-layout').value = c.printLayout;
+  $('in-themecolor').value = c.printThemeColor;
+  $('in-autoprint').value = String(c.printOnDone);
+  browse(c.watchDir || null);
+}
+
+async function browse(dir) {
+  const url = dir ? '/api/browse?dir=' + encodeURIComponent(dir) : '/api/browse';
+  const data = await api(url).catch(() => null);
+  if (!data) return;
+  const box = $('browser');
+  box.innerHTML = '';
+  if (data.parent !== null && data.parent !== undefined) {
+    const up = document.createElement('div');
+    up.textContent = '.. ขึ้นบน';
+    up.onclick = () => browse(data.parent);
+    box.appendChild(up);
+  } else if (data.current) {
+    const up = document.createElement('div');
+    up.textContent = '.. ไดรฟ์ทั้งหมด';
+    up.onclick = () => browse(null);
+    box.appendChild(up);
+  }
+  for (const d of data.dirs) {
+    const row = document.createElement('div');
+    row.textContent = d.name;
+    row.onclick = () => { $('in-watch').value = d.path; browse(d.path); };
+    box.appendChild(row);
+  }
+}
+
+$('btn-save').onclick = async () => {
+  $('save-msg').textContent = 'กำลังบันทึก...';
+  try {
+    await api('/api/settings', {
+      method: 'POST',
+      body: JSON.stringify({
+        CAPTURE_SOURCE: $('in-source').value,
+        COUNTDOWN: Number($('in-countdown').value),
+        WATCH_DIR: $('in-watch').value.trim(),
+        SHOTS: Number($('in-shots').value),
+        PRINT_SHOTS: Number($('in-printshots').value),
+        SESSION_IDLE_SECONDS: Number($('in-idle').value),
+        EVENT_NAME: $('in-event').value.trim(),
+        PRINT_LAYOUT: $('in-layout').value,
+        PRINT_THEME_COLOR: $('in-themecolor').value,
+        PRINT_ON_DONE: $('in-autoprint').value,
+      }),
+    });
+    $('save-msg').innerHTML = '<span class="ok">บันทึกแล้ว</span>';
+    refreshHealth();
+  } catch (err) {
+    $('save-msg').innerHTML = '<span class="bad">' + err.message + '</span>';
+  }
+};
+
+function bindAction(id, path, label) {
+  $(id).onclick = async () => {
+    $('action-msg').textContent = 'กำลังทำงาน...';
+    try {
+      await api(path, { method: 'POST' });
+      $('action-msg').innerHTML = '<span class="ok">' + label + '</span>';
+    } catch (err) {
+      $('action-msg').innerHTML = '<span class="bad">' + err.message + '</span>';
+    }
+  };
+}
+bindAction('btn-start', '/api/start', 'เริ่มถ่ายแล้ว');
+bindAction('btn-finish', '/api/finish', 'ปิดเซสชันแล้ว');
+bindAction('btn-discard', '/api/discard', 'ทิ้งเซสชันแล้ว');
+bindAction('btn-print', '/api/print', 'ส่งเข้าคิวปริ้นแล้ว');
+bindAction('btn-mock', '/api/mock-shot', 'ยิงช็อตทดสอบแล้ว');
+
+const es = new EventSource('/api/events');
+es.onmessage = (ev) => applyState(JSON.parse(ev.data));
+loadConfig();
+refreshHealth();
+setInterval(refreshHealth, 10000);
+</script>
+</body>
+</html>

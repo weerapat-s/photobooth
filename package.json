@@ -1,0 +1,21 @@
+{
+  "name": "photobooth",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server/index.js",
+    "print-booth": "node printbooth/index.js",
+    "pack-printbooth": "node launch/pack-printbooth.js",
+    "icons": "node launch/make-icons.js",
+    "install-shortcuts": "powershell -NoProfile -ExecutionPolicy Bypass -File launch/install-shortcuts.ps1",
+    "uninstall-shortcuts": "powershell -NoProfile -ExecutionPolicy Bypass -File launch/install-shortcuts.ps1 -Uninstall"
+  },
+  "dependencies": {
+    "chokidar": "^4.0.3",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "qrcode": "^1.5.4",
+    "sharp": "^0.34.4"
+  }
+}
