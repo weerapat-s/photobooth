@@ -9,7 +9,12 @@
     "pack-printbooth": "node launch/pack-printbooth.js",
     "icons": "node launch/make-icons.js",
     "install-shortcuts": "powershell -NoProfile -ExecutionPolicy Bypass -File launch/install-shortcuts.ps1",
-    "uninstall-shortcuts": "powershell -NoProfile -ExecutionPolicy Bypass -File launch/install-shortcuts.ps1 -Uninstall"
+    "uninstall-shortcuts": "powershell -NoProfile -ExecutionPolicy Bypass -File launch/install-shortcuts.ps1 -Uninstall",
+    "test": "node tests/runner.js",
+    "test:unit": "node tests/validation.spec.js && node tests/retention.spec.js",
+    "test:integration": "node tests/baseline.spec.js && node tests/security.spec.js && node tests/recovery.spec.js && node tests/printqueue.spec.js && node tests/preflight.spec.js",
+    "verify": "npm test",
+    "verify-printbooth": "node launch/pack-printbooth.js && node tests/security.spec.js"
   },
   "dependencies": {
     "chokidar": "^4.0.3",
