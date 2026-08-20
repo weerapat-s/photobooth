@@ -148,6 +148,7 @@ app.use(express.json());
 app.get('/', (req, res) => res.sendFile(path.join(ROOT, 'ui.html')));
 
 app.get('/api/status', async (req, res) => {
+  const maskedToken = config.nc.token ? `${config.nc.token.slice(0, 3)}***` : '';
   res.json({
     ...state,
     printer: config.printerName || '(เครื่องพิมพ์เริ่มต้น)',
@@ -156,7 +157,7 @@ app.get('/api/status', async (req, res) => {
     dryRun: config.dryRun,
     acceptBooths: config.acceptBooths,
     queueDir: paths.queue,
-    share: `${config.nc.base}/s/${config.nc.token}`,
+    share: `${config.nc.base}/s/${maskedToken}`,
   });
 });
 
@@ -171,10 +172,9 @@ app.get('/api/claimed', async (req, res) => {
 });
 
 /**
- * ข้อมูลสำหรับจอบอร์ดคิวเต็มจอ (queue.html) — ไม่ผูกกับเครื่องไหนโดยเฉพาะ
- * รวมงานที่ "รอ/กำลังพิมพ์" (ทุกเครื่อง) กับ "พิมพ์เสร็จล่าสุด" ไว้ให้จอเดียวจบ
+ * ข้อมูลสำหรับจอบอร์ดคิวเต็มจอ (queue.html) — รวมงานที่รอ/กำลังพิมพ์ และพิมพ์เสร็จ
  */
-app.get('/api/board', async (req, res) => {
+async function handleGetBoard(req, res) {
   try {
     const [queued, claimed, done] = await Promise.all([
       nc.list(paths.queue).catch(() => []),
@@ -198,8 +198,9 @@ app.get('/api/board', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-});
+}
 
+app.get('/api/board', handleGetBoard);
 app.get('/queue.html', (req, res) => res.sendFile(path.join(ROOT, 'queue.html')));
 
 app.post('/api/poll', async (req, res) => {
@@ -230,10 +231,20 @@ app.post('/api/print/:name', async (req, res) => {
   }
 });
 
-app.listen(config.port, async () => {
-  console.log(`บูทปริ้น "${config.printerId}"  http://localhost:${config.port}`);
+// ---------------------------------------------------------------------------
+// Board App (Read-only for LAN display, binding to 0.0.0.0)
+// ---------------------------------------------------------------------------
+const boardApp = express();
+boardApp.use(express.json());
+boardApp.get('/', (req, res) => res.sendFile(path.join(ROOT, 'queue.html')));
+boardApp.get('/queue.html', (req, res) => res.sendFile(path.join(ROOT, 'queue.html')));
+boardApp.get('/api/board', handleGetBoard);
+
+app.listen(config.port, config.host, async () => {
+  const maskedToken = config.nc.token ? `${config.nc.token.slice(0, 3)}***` : '(none)';
+  console.log(`บูทปริ้น Admin "${config.printerId}"  http://${config.host}:${config.port}`);
   console.log(`  เครื่องพิมพ์: ${config.printerName || '(เริ่มต้นของ Windows)'}  กระดาษ ${config.paper}  auto=${config.auto}${config.dryRun ? '  DRY RUN' : ''}`);
-  console.log(`  คิว: ${config.nc.base}/s/${config.nc.token} -> ${paths.queue}`);
+  console.log(`  คิว: ${config.nc.base}/s/${maskedToken} -> ${paths.queue}`);
   if (config.acceptBooths.length) console.log(`  รับเฉพาะบูท: ${config.acceptBooths.join(', ')}`);
 
   for (const dir of [paths.queue, paths.claimed, paths.done, paths.failed]) {
@@ -243,4 +254,8 @@ app.listen(config.port, async () => {
   poll();
   setInterval(poll, config.pollMs);
   setInterval(() => requeueStale().catch(() => {}), Math.max(config.pollMs * 12, 60000));
+});
+
+boardApp.listen(config.boardPort, config.boardHost, () => {
+  console.log(`จอบอร์ดคิว (Read-only)  http://${config.boardHost}:${config.boardPort}/queue.html`);
 });

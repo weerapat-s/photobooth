@@ -10,6 +10,7 @@ const num = (v, d) => (v === undefined || v === '' ? d : Number(v));
 const bool = (v, d) => (v === undefined || v === '' ? d : String(v).toLowerCase() === 'true');
 
 export const config = {
+  host: process.env.HOST || '127.0.0.1',
   port: num(process.env.PORT, 4700),
   shots: num(process.env.SHOTS, 4),
   reviewSeconds: num(process.env.REVIEW_SECONDS, 90),

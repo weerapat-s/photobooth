@@ -12,7 +12,10 @@ const list = (v) => String(v || '').split(',').map((s) => s.trim()).filter(Boole
 export const config = {
   // ชื่อเครื่องพิมพ์ตัวนี้ ต้องไม่ซ้ำกันในงานเดียวกัน — ใช้ตอนจองงานจากคิว
   printerId: (process.env.PRINTER_ID || os.hostname() || 'print-1').replace(/[^A-Za-z0-9_-]/g, '-'),
+  host: process.env.PRINT_HOST || '127.0.0.1',
   port: num(process.env.PRINT_PORT, 4701),
+  boardHost: process.env.BOARD_HOST || '0.0.0.0',
+  boardPort: num(process.env.BOARD_PORT, 4702),
   printerName: process.env.PRINTER_NAME || '',
   paper: process.env.PAPER || '4x6',
   auto: bool(process.env.AUTO_PRINT, true),

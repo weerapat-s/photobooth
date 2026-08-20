@@ -172,8 +172,9 @@ app.get('/api/session/:id/file/:name', (req, res) => {
   res.sendFile(file);
 });
 
-app.listen(config.port, () => {
-  console.log(`photobooth  จอลูกค้า http://localhost:${config.port}  |  จอช่าง http://localhost:${config.port}/operator.html`);
+app.listen(config.port, config.host, () => {
+  const maskedToken = config.nc.token ? `${config.nc.token.slice(0, 3)}***` : '(none)';
+  console.log(`photobooth  จอลูกค้า http://${config.host}:${config.port}  |  จอช่าง http://${config.host}:${config.port}/operator.html`);
   if (config.captureSource === 'folder') {
     const started = watch.start(config.watchDir);
     if (started.ok) console.log(`  เฝ้าโฟลเดอร์: ${config.watchDir}`);
@@ -181,6 +182,6 @@ app.listen(config.port, () => {
   } else {
     console.log(`  แหล่งภาพ: ${config.captureSource}${config.captureSource === 'digicam' ? ` (${config.dccHost})` : ''}`);
   }
-  console.log(`  Nextcloud: ${config.nc.base}/s/${config.nc.token} (โฟลเดอร์ ${config.nc.root})`);
+  console.log(`  Nextcloud: ${config.nc.base}/s/${maskedToken} (โฟลเดอร์ ${config.nc.root})`);
   console.log(`  ${config.shots} ช็อต/เซสชัน  ปิดเซสชันอัตโนมัติถ้าเงียบ ${config.sessionIdleSeconds} วิ`);
 });

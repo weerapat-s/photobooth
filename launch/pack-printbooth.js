@@ -36,9 +36,12 @@ if (fs.existsSync(envFile)) {
   );
   const target = path.join(out, '.env.example');
   let text = fs.readFileSync(target, 'utf8');
-  for (const key of ['NC_BASE', 'NC_SHARE_TOKEN', 'NC_SHARE_PASSWORD', 'NC_ROOT']) {
+  for (const key of ['NC_BASE', 'NC_ROOT']) {
     if (env[key] !== undefined) text = text.replace(new RegExp(`^${key}=.*$`, 'm'), `${key}=${env[key]}`);
   }
+  // ไม่ฝัง secret token และ password ในแพ็กเกจ dist
+  text = text.replace(/^NC_SHARE_TOKEN=.*$/m, 'NC_SHARE_TOKEN=');
+  text = text.replace(/^NC_SHARE_PASSWORD=.*$/m, 'NC_SHARE_PASSWORD=');
   fs.writeFileSync(target, text, 'utf8');
 }
 
