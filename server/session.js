@@ -8,6 +8,7 @@ import { watcher, mockShot } from './watcher.js';
 import { composePrint, makePreview } from './compose.js';
 import { makeVideoFromFrames } from './video.js';
 import * as nc from './nextcloud.js';
+import { saveJournal, loadJournal, scanUnfinishedSessions } from './journal.js';
 
 export const bus = new EventEmitter();
 bus.setMaxListeners(50);
@@ -79,6 +80,13 @@ function emit(patch = {}) {
     }
   }
   Object.assign(state, patch);
+  if (state.session) {
+    saveJournal({
+      ...state.session,
+      phase: state.phase,
+      lastError: state.message,
+    });
+  }
   bus.emit('update', snapshot());
 }
 
@@ -311,14 +319,41 @@ export async function sendToPrint(copies = 1) {
   return job;
 }
 
-/** ปุ่มทดสอบในจอช่าง: โหมด folder = ปล่อยไฟล์ลงโฟลเดอร์ที่เฝ้า, โหมดอื่น = เริ่มเซสชันปลอม */
-export async function fakeShot() {
-  if (config.captureSource === 'folder') return mockShot();
-  const s = state.phase === 'shooting' ? state.session : await beginSession();
-  const file = await mockShot(s.rawDir);
-  await addPhoto(file);
-  return file;
+export async function recoverSession(sessionId, action = 'resume') {
+  const sessionDir = path.join(config.sessionsDir, sessionId);
+  const journal = loadJournal(sessionDir);
+  if (!journal) throw new Error(`ไม่พบ Journal ของเซสชัน ${sessionId}`);
+
+  if (action === 'discard') {
+    await fsp.rm(sessionDir, { recursive: true, force: true }).catch(() => {});
+    return { ok: true, action: 'discarded' };
+  }
+
+  // โหลดเซสชันเดิมกลับมาเป็น active session
+  const s = {
+    id: journal.id,
+    localDir: sessionDir,
+    rawDir: path.join(config.captureDir, journal.id),
+    startedAt: journal.startedAt || Date.now(),
+    photos: (journal.photos || []).filter((p) => fsp.access(p).then(() => true).catch(() => false)),
+    previews: journal.previews || [],
+    shareUrl: journal.shareUrl || null,
+    shareId: journal.shareId || null,
+    qr: null,
+    printed: Boolean(journal.printed),
+    queueNumber: journal.queueNumber || null,
+  };
+
+  emit({ phase: 'shooting', session: s, message: 'กำลังกู้คืนเซสชัน...' });
+  if (s.photos.length > 0) {
+    await finish(`กู้คืนจาก Journal (action=${action})`);
+  } else {
+    emit({ phase: 'idle', session: null, message: 'ไม่มีภาพในเซสชันที่กู้คืน' });
+  }
+  return { ok: true, session: s };
 }
+
+export { scanUnfinishedSessions };
 
 watcher.on('photo', (file) => { addPhoto(file).catch(reportError); });
 watcher.on('warn', (msg) => console.warn('[watch]', msg));

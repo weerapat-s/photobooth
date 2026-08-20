@@ -6,7 +6,25 @@ import { config, ROOT, saveEnv } from './config.js';
 import * as watch from './watcher.js';
 import * as nc from './nextcloud.js';
 import { camera } from './camera.js';
-import { bus, snapshot, reset, startSession, finishNow, discard, sendToPrint, fakeShot } from './session.js';
+import { bus, snapshot, reset, startSession, finishNow, discard, sendToPrint, fakeShot, scanUnfinishedSessions, recoverSession } from './session.js';
+
+app.get('/api/unfinished', (req, res) => {
+  try {
+    const list = scanUnfinishedSessions();
+    res.json({ ok: true, unfinished: list });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post('/api/recover/:id', async (req, res) => {
+  try {
+    const result = await recoverSession(req.params.id, req.body?.action);
+    res.json({ ok: true, result });
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err.message });
+  }
+});
 
 const app = express();
 app.use(express.json());
