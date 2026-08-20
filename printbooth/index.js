@@ -61,19 +61,99 @@ async function claim(jobFile) {
 }
 
 async function runJob(claimedPath) {
-  const raw = await nc.getFile(claimedPath);
-  const job = JSON.parse(raw.toString('utf8'));
-  const copies = Math.max(1, Math.min(config.maxCopies, Number(job.copies) || 1));
+  let stage = 'downloading';
+  let localFile = null;
+  const fileName = path.posix.basename(claimedPath);
 
-  await fsp.mkdir(tmpRoot, { recursive: true });
-  const local = path.join(tmpRoot, `${job.sessionId}.jpg`);
-  await fsp.writeFile(local, await nc.getFile(job.printFile));
+  try {
+    let raw;
+    try {
+      raw = await nc.getFile(claimedPath);
+    } catch (err) {
+      log(`ดาวน์โหลด job json ล้มเหลว (${fileName}): ${err.message}`);
+      throw { stage: 'downloading', error: err };
+    }
 
-  const detail = await printImage(local, copies);
-  await nc.move(claimedPath, `${paths.done}/${path.posix.basename(claimedPath)}`, { overwrite: true });
-  remember({ id: job.sessionId, queueNumber: job.queueNumber || parseQueueNumber(path.basename(claimedPath)), at: new Date().toISOString(), ok: true, copies, detail });
-  log(`พิมพ์แล้ว #${job.queueNumber || '?'} ${job.sessionId} x${copies} — ${detail}`);
-  await fsp.rm(local, { force: true });
+    let job;
+    try {
+      job = JSON.parse(raw.toString('utf8'));
+    } catch (parseErr) {
+      log(`ไฟล์ JSON ไม่ถูกต้อง (${fileName}): ${parseErr.message}`);
+      throw { stage: 'invalid_json', error: parseErr };
+    }
+
+    const copies = Math.max(1, Math.min(config.maxCopies, Number(job.copies) || 1));
+    const jobId = job.jobId || job.sessionId || fileName;
+
+    await fsp.mkdir(tmpRoot, { recursive: true });
+    localFile = path.join(tmpRoot, `${jobId}-${Date.now()}.jpg`);
+
+    // Download image with retry
+    stage = 'downloading';
+    let imageBuf = null;
+    for (let retry = 1; retry <= 3; retry++) {
+      try {
+        imageBuf = await nc.getFile(job.printFile);
+        break;
+      } catch (err) {
+        if (retry === 3) throw { stage: 'downloading', error: err };
+        await new Promise((r) => setTimeout(r, 1000 * retry));
+      }
+    }
+
+    await fsp.writeFile(localFile, imageBuf);
+
+    // Printing stage (spooler)
+    stage = 'printing';
+    job.status = 'printing';
+    job.lastHeartbeat = new Date().toISOString();
+    await nc.putText(JSON.stringify(job, null, 2), claimedPath).catch(() => {});
+
+    const detail = await printImage(localFile, copies);
+
+    job.status = 'done';
+    await nc.move(claimedPath, `${paths.done}/${fileName}`, { overwrite: true });
+    remember({ id: job.sessionId, queueNumber: job.queueNumber || parseQueueNumber(fileName), at: new Date().toISOString(), ok: true, copies, detail });
+    log(`พิมพ์แล้ว #${job.queueNumber || '?'} ${job.sessionId} x${copies} — ${detail}`);
+  } catch (errObj) {
+    const err = errObj.error || errObj;
+    const currentStage = errObj.stage || stage;
+
+    if (currentStage === 'printing') {
+      log(`งาน ${fileName} ขัดข้องระหว่าง/หลังเริ่มพิมพ์ ส่งไป review: ${err.message}`);
+      await moveToReview(claimedPath, err);
+    } else if (currentStage === 'invalid_json') {
+      log(`งาน ${fileName} JSON เสีย ส่งไป failed: ${err.message}`);
+      await failJob(claimedPath, err);
+    } else {
+      log(`งาน ${fileName} ดาวน์โหลดไม่สำเร็จ ย้ายกลับคิวรอ retry: ${err.message}`);
+      await requeueSingleJob(claimedPath);
+    }
+  } finally {
+    if (localFile) {
+      await fsp.rm(localFile, { force: true }).catch(() => {});
+    }
+  }
+}
+
+async function moveToReview(claimedPath, err) {
+  const name = path.posix.basename(claimedPath);
+  remember({ id: name, queueNumber: parseQueueNumber(name), at: new Date().toISOString(), ok: false, detail: `REVIEW: ${err.message}` });
+  try {
+    await nc.move(claimedPath, `${paths.review}/${name}`, { overwrite: true });
+  } catch (moveErr) {
+    log('ย้ายงานไป review ไม่ได้:', moveErr.message);
+  }
+}
+
+async function requeueSingleJob(claimedPath) {
+  const name = path.posix.basename(claimedPath);
+  const original = name.split('__').slice(2).join('__') || name;
+  try {
+    await nc.move(claimedPath, `${paths.queue}/${original}`, { overwrite: true });
+  } catch (moveErr) {
+    log('เอางานกลับคิวไม่ได้:', moveErr.message);
+  }
 }
 
 async function failJob(claimedPath, err) {
@@ -96,6 +176,19 @@ async function requeueStale() {
     if (item.isDir || !item.name.endsWith('.json')) continue;
     const when = claimTime(item.name);
     if (!when || when > cutoff) continue;
+
+    // ตรวจสอบว่างานค้างอยู่ในช่วง printing หรือไม่ ถ้าเริ่มพิมพ์ไปแล้วส่งไป review
+    try {
+      const content = JSON.parse((await nc.getFile(`${paths.claimed}/${item.name}`)).toString('utf8'));
+      if (content.status === 'printing') {
+        log(`งานค้าง ${item.name} เคยเริ่มพิมพ์ไปแล้ว ย้ายไป review`);
+        await moveToReview(`${paths.claimed}/${item.name}`, new Error('Stale claimed job during printing stage'));
+        continue;
+      }
+    } catch (e) {
+      // ถ้าอ่าน json ไม่ได้ก็ย้ายกลับคิวตามปกติ
+    }
+
     const original = item.name.split('__').slice(2).join('__') || item.name;
     const ok = await nc.move(`${paths.claimed}/${item.name}`, `${paths.queue}/${original}`).catch(() => false);
     if (ok) {
@@ -247,7 +340,7 @@ app.listen(config.port, config.host, async () => {
   console.log(`  คิว: ${config.nc.base}/s/${maskedToken} -> ${paths.queue}`);
   if (config.acceptBooths.length) console.log(`  รับเฉพาะบูท: ${config.acceptBooths.join(', ')}`);
 
-  for (const dir of [paths.queue, paths.claimed, paths.done, paths.failed]) {
+  for (const dir of [paths.queue, paths.claimed, paths.done, paths.failed, paths.review]) {
     await nc.ensureDir(dir).catch((e) => console.error('[print] เตรียมโฟลเดอร์ไม่ได้:', e.message));
   }
   await requeueStale().catch(() => {});

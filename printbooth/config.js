@@ -40,4 +40,5 @@ export const paths = {
   claimed: `${config.nc.root}/_print/claimed`,
   done: `${config.nc.root}/_print/done`,
   failed: `${config.nc.root}/_print/failed`,
+  review: `${config.nc.root}/_print/review`,
 };
