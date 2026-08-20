@@ -9,6 +9,17 @@ import { camera } from './camera.js';
 import { bus, snapshot, reset, startSession, finishNow, discard, sendToPrint, fakeShot, scanUnfinishedSessions, recoverSession } from './session.js';
 import { runPreflightChecks } from './preflight.js';
 import { generateCalibrationSheet } from './calibration.js';
+import { runCleanup } from './retention.js';
+
+app.post('/api/cleanup', async (req, res) => {
+  try {
+    const dryRun = req.query.dryRun !== 'false';
+    const result = await runCleanup({ dryRun });
+    res.json({ ok: true, result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
 
 app.get('/api/preflight', async (req, res) => {
   try {
