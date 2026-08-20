@@ -33,10 +33,16 @@ let reviewTimer = null;
 let capturing = false;
 const buffered = [];
 
-function emit(patch = {}) {
-  Object.assign(state, patch);
-  bus.emit('update', snapshot());
-}
+const ALLOWED_TRANSITIONS = {
+  idle: ['shooting', 'error'],
+  shooting: ['processing', 'idle', 'error'],
+  processing: ['done', 'idle', 'error'],
+  done: ['idle', 'shooting', 'error'],
+  error: ['idle', 'shooting'],
+};
+
+let actionLock = false;
+let currentCancelToken = null;
 
 export function snapshot(extra = {}) {
   const s = state.session;
@@ -65,8 +71,20 @@ export function snapshot(extra = {}) {
   };
 }
 
+function emit(patch = {}) {
+  if (patch.phase && patch.phase !== state.phase) {
+    const validNext = ALLOWED_TRANSITIONS[state.phase] || [];
+    if (!validNext.includes(patch.phase)) {
+      console.warn(`[state] Invalid transition requested: ${state.phase} -> ${patch.phase}`);
+    }
+  }
+  Object.assign(state, patch);
+  bus.emit('update', snapshot());
+}
+
 function newSession() {
-  const id = `${config.boothName}-${stamp()}`;
+  const randomHex = Math.random().toString(36).substring(2, 6);
+  const id = `${config.boothName}-${stamp()}-${randomHex}`;
   return {
     id,
     localDir: path.join(config.sessionsDir, id),
@@ -82,7 +100,7 @@ function newSession() {
 
 function armIdleTimer() {
   clearTimeout(idleTimer);
-  if (config.captureSource !== 'folder') return; // โหมด digicam แอปคุมจังหวะเอง
+  if (config.captureSource !== 'folder') return;
   idleTimer = setTimeout(() => {
     if (state.phase === 'shooting' && state.session?.photos.length) {
       finish('หมดเวลารอช็อตถัดไป').catch(reportError);
@@ -99,6 +117,9 @@ function reportError(err) {
 
 async function beginSession() {
   clearTimeout(reviewTimer);
+  if (currentCancelToken) currentCancelToken.cancelled = true;
+  currentCancelToken = { cancelled: false };
+
   const s = newSession();
   await fsp.mkdir(s.localDir, { recursive: true });
   emit({ phase: 'shooting', session: s, message: '', countdown: 0 });
@@ -107,25 +128,35 @@ async function beginSession() {
 
 /** เพิ่มหนึ่งช็อตเข้าเซสชัน (มาจากกล้องหรือจากโฟลเดอร์ที่เฝ้าอยู่) */
 async function addPhoto(file) {
-  if (state.phase === 'processing') {
+  if (actionLock) {
+    console.warn('[session] Action locked, buffering photo:', file);
     buffered.push(file);
     return;
   }
-  if (state.phase !== 'shooting') await beginSession();
-
-  const s = state.session;
-  s.photos.push(file);
-  const name = `preview-${s.photos.length}.jpg`;
+  actionLock = true;
   try {
-    await makePreview(file, s.localDir, name);
-    s.previews.push(name);
-  } catch (err) {
-    console.warn('[session] ทำภาพพรีวิวไม่ได้:', err.message);
-  }
-  emit({ lastPhotoAt: Date.now(), countdown: 0 });
+    if (state.phase === 'processing') {
+      buffered.push(file);
+      return;
+    }
+    if (state.phase !== 'shooting') await beginSession();
 
-  if (s.photos.length >= config.shots) await finish('ครบจำนวนช็อต');
-  else armIdleTimer();
+    const s = state.session;
+    s.photos.push(file);
+    const name = `preview-${s.photos.length}.jpg`;
+    try {
+      await makePreview(file, s.localDir, name);
+      s.previews.push(name);
+    } catch (err) {
+      console.warn('[session] ทำภาพพรีวิวไม่ได้:', err.message);
+    }
+    emit({ lastPhotoAt: Date.now(), countdown: 0 });
+
+    if (s.photos.length >= config.shots) await finish('ครบจำนวนช็อต');
+    else armIdleTimer();
+  } finally {
+    actionLock = false;
+  }
 }
 
 /** โหมด digicam: แอปนับถอยหลังและสั่งชัตเตอร์เอง */
@@ -133,15 +164,16 @@ export async function startSession() {
   if (config.captureSource === 'folder') {
     throw new Error('โหมดเฝ้าโฟลเดอร์ — ช่างกดชัตเตอร์เอง ไม่ต้องกดเริ่ม');
   }
-  if (capturing || state.phase === 'processing') throw new Error('กำลังทำงานอยู่');
+  if (capturing || state.phase === 'processing' || actionLock) throw new Error('กำลังทำงานอยู่');
 
   capturing = true;
   const s = await beginSession();
-  runCaptureLoop(s).catch(reportError).finally(() => { capturing = false; });
+  const token = currentCancelToken;
+  runCaptureLoop(s, token).catch(reportError).finally(() => { capturing = false; });
   return s.id;
 }
 
-async function runCaptureLoop(s) {
+async function runCaptureLoop(s, cancelToken) {
   const mock = config.captureSource === 'mock';
   if (!mock) {
     await camera.setSessionFolder(s.rawDir);
@@ -152,17 +184,21 @@ async function runCaptureLoop(s) {
 
   try {
     for (let i = 1; i <= config.shots; i++) {
+      if (cancelToken?.cancelled) break;
       for (let t = config.countdown; t >= 1; t--) {
+        if (cancelToken?.cancelled) break;
         emit({ countdown: t, shot: i });
         await sleep(1000);
       }
+      if (cancelToken?.cancelled) break;
       emit({ countdown: 0, shot: i });
       bus.emit('update', snapshot({ flash: true }));
       emit({ message: 'กำลังบันทึกภาพ...' });
 
       const file = mock ? await mockShot(s.rawDir) : await camera.capture(s.rawDir);
+      if (cancelToken?.cancelled) break;
       await addPhoto(file);
-      if (state.phase !== 'shooting') break; // ครบแล้ว หรือถูกสั่งหยุด
+      if (state.phase !== 'shooting' || cancelToken?.cancelled) break;
       await sleep(config.shotGapSeconds * 1000);
     }
   } finally {
@@ -231,6 +267,7 @@ async function finish(reason) {
 export function reset() {
   clearTimeout(idleTimer);
   clearTimeout(reviewTimer);
+  if (currentCancelToken) currentCancelToken.cancelled = true;
   emit({ phase: 'idle', session: null, message: '', countdown: 0 });
 }
 
@@ -243,6 +280,7 @@ export async function finishNow() {
 
 export function discard() {
   if (state.phase === 'processing') throw new Error('กำลังอัปโหลดอยู่ ยกเลิกไม่ได้');
+  if (currentCancelToken) currentCancelToken.cancelled = true;
   reset();
 }
 

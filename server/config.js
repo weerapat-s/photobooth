@@ -66,16 +66,11 @@ export const config = {
 
 fs.mkdirSync(config.sessionsDir, { recursive: true });
 
+import { saveEnvAtomic, validateConfigPatch } from './schema.js';
+
 /** เขียนค่ากลับลง .env (ใช้จากหน้าตั้งค่าของ operator) แล้วอัปเดตค่าใน memory ให้ด้วย */
 export function saveEnv(patch) {
-  let text = fs.existsSync(config.envFile) ? fs.readFileSync(config.envFile, 'utf8') : '';
-  for (const [key, value] of Object.entries(patch)) {
-    const line = `${key}=${value}`;
-    const re = new RegExp(`^\\s*${key}\\s*=.*$`, 'm');
-    text = re.test(text) ? text.replace(re, line) : `${text.replace(/\s*$/, '')}\n${line}\n`;
-    process.env[key] = String(value);
-  }
-  fs.writeFileSync(config.envFile, text, 'utf8');
+  saveEnvAtomic(config.envFile, patch);
 
   if ('WATCH_DIR' in patch) config.watchDir = String(patch.WATCH_DIR);
   if ('SHOTS' in patch) config.shots = Number(patch.SHOTS);
