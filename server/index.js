@@ -7,6 +7,27 @@ import * as watch from './watcher.js';
 import * as nc from './nextcloud.js';
 import { camera } from './camera.js';
 import { bus, snapshot, reset, startSession, finishNow, discard, sendToPrint, fakeShot, scanUnfinishedSessions, recoverSession } from './session.js';
+import { runPreflightChecks } from './preflight.js';
+import { generateCalibrationSheet } from './calibration.js';
+
+app.get('/api/preflight', async (req, res) => {
+  try {
+    const report = await runPreflightChecks();
+    res.json(report);
+  } catch (err) {
+    res.status(500).json({ status: 'BLOCKED', error: err.message });
+  }
+});
+
+app.get('/api/calibration', async (req, res) => {
+  try {
+    const layout = req.query.layout || config.printLayout;
+    const buf = await generateCalibrationSheet(layout);
+    res.set('Content-Type', 'image/jpeg').send(buf);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.get('/api/unfinished', (req, res) => {
   try {
