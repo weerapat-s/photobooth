@@ -6,7 +6,7 @@ async function runPreflightTest() {
   console.log('--- STARTING PHASE 5 PREFLIGHT & CALIBRATION TEST ---');
 
   // 1. Run Preflight
-  const report = await runPreflightChecks();
+  const report = await runPreflightChecks({ skipExternal: true });
   assert(report.status, 'Preflight report must have status');
   assert(Array.isArray(report.checks), 'Preflight report must have checks array');
   console.log(`Preflight status: ${report.status}, checks run: ${report.checks.length}`);

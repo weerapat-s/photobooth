@@ -1,55 +1,121 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import fsp from 'node:fs/promises';
-import { config } from './config.js';
+import { config, ROOT } from './config.js';
 import * as nc from './nextcloud.js';
-import { loadJournal } from './journal.js';
+import { loadJournal, saveJournal, scanUnfinishedSessions } from './journal.js';
+
+const days = (name, fallback) => {
+  const value = Number(process.env[name] ?? fallback);
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
+};
 
 export const retentionConfig = {
-  localRetentionDays: Number(process.env.LOCAL_RETENTION_DAYS || 7),
-  cloudRetentionDays: Number(process.env.CLOUD_RETENTION_DAYS || 30),
-  minFreeDiskGb: Number(process.env.MIN_FREE_DISK_GB || 5),
+  localRetentionDays: days('LOCAL_RETENTION_DAYS', 7),
+  cloudRetentionDays: days('CLOUD_RETENTION_DAYS', 30),
+  shareRetentionDays: days('SHARE_RETENTION_DAYS', 7),
+  printHistoryDays: days('PRINT_HISTORY_DAYS', 30),
+  minFreeDiskGb: days('MIN_FREE_DISK_GB', 5),
 };
 
 function logAudit(entry) {
-  const auditLogPath = path.join(config.ROOT, 'logs', 'audit.log');
-  fs.mkdirSync(path.dirname(auditLogPath), { recursive: true });
-  const line = `[${new Date().toISOString()}] ${JSON.stringify(entry)}\n`;
-  fs.appendFileSync(auditLogPath, line, 'utf8');
+  try {
+    const auditLogPath = path.join(ROOT, 'logs', 'audit.log');
+    fs.mkdirSync(path.dirname(auditLogPath), { recursive: true });
+    fs.appendFileSync(auditLogPath, `[${new Date().toISOString()}] ${JSON.stringify(entry)}\n`, 'utf8');
+  } catch (err) {
+    console.warn('[retention] เขียน audit log ไม่สำเร็จ:', err.message);
+  }
 }
 
-export async function runCleanup({ dryRun = true } = {}) {
-  const localCutoff = Date.now() - retentionConfig.localRetentionDays * 86400 * 1000;
+const olderThan = (value, cutoff) => {
+  const timestamp = typeof value === 'number' ? value : Date.parse(value || '');
+  return Number.isFinite(timestamp) && timestamp < cutoff;
+};
+
+export async function diskStatus() {
+  try {
+    const stat = await fsp.statfs(config.sessionsDir);
+    const freeGb = Number(stat.bavail) * Number(stat.bsize) / 1024 ** 3;
+    return { ok: freeGb >= retentionConfig.minFreeDiskGb, freeGb, minFreeDiskGb: retentionConfig.minFreeDiskGb };
+  } catch (err) {
+    return { ok: false, freeGb: null, minFreeDiskGb: retentionConfig.minFreeDiskGb, error: err.message };
+  }
+}
+
+export async function runCleanup({ dryRun = true, activeSessionId = null, skipCloud = false } = {}) {
+  const now = Date.now();
+  const localCutoff = now - retentionConfig.localRetentionDays * 86400 * 1000;
+  const cloudCutoff = now - retentionConfig.cloudRetentionDays * 86400 * 1000;
+  const shareCutoff = now - retentionConfig.shareRetentionDays * 86400 * 1000;
+  const printCutoff = now - retentionConfig.printHistoryDays * 86400 * 1000;
+  const unfinishedIds = new Set(scanUnfinishedSessions().map((s) => s.id));
   const deletedLocal = [];
   const deletedCloud = [];
+  const revokedShares = [];
+  const deletedPrintHistory = [];
 
-  // 1. Cleanup local sessions
   if (fs.existsSync(config.sessionsDir)) {
     const entries = await fsp.readdir(config.sessionsDir, { withFileTypes: true });
     for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
+      if (!entry.isDirectory() || entry.name === activeSessionId || unfinishedIds.has(entry.name)) continue;
       const dirPath = path.join(config.sessionsDir, entry.name);
       const journal = loadJournal(dirPath);
-
-      // Skip current or unfinished session
-      if (journal && journal.phase !== 'done') continue;
-
       const stat = await fsp.stat(dirPath);
+
+      if (journal?.phase === 'done' && journal.shareId && olderThan(journal.startedAt, shareCutoff)) {
+        revokedShares.push({ id: entry.name, shareId: journal.shareId });
+        if (!dryRun) {
+          await nc.deleteShare(journal.shareId);
+          journal.shareId = null;
+          journal.shareUrl = null;
+          saveJournal({ ...journal, localDir: dirPath });
+          logAudit({ action: 'revoke_session_share', id: entry.name });
+        }
+      }
+
       if (stat.mtimeMs < localCutoff) {
+        deletedLocal.push(entry.name);
         if (!dryRun) {
           await fsp.rm(dirPath, { recursive: true, force: true });
-          logAudit({ action: 'delete_local_session', id: entry.name, path: dirPath });
+          logAudit({ action: 'delete_local_session', id: entry.name });
         }
-        deletedLocal.push(entry.name);
       }
+    }
+  }
+
+  const remoteSessions = skipCloud ? [] : await nc.list(nc.NC_ROOT).catch(() => []);
+  for (const item of remoteSessions) {
+    if (!item.isDir || item.name.startsWith('_') || !olderThan(item.modified, cloudCutoff)) continue;
+    const remoteDir = `${nc.NC_ROOT}/${item.name}`;
+    deletedCloud.push(item.name);
+    if (!dryRun) {
+      const shares = await nc.findSessionShares(remoteDir).catch(() => []);
+      for (const share of shares) await nc.deleteShare(share.shareId);
+      await nc.remove(remoteDir);
+      logAudit({ action: 'delete_cloud_session', id: item.name });
+    }
+  }
+
+  const donePath = `${nc.NC_ROOT}/_print/done`;
+  const doneJobs = skipCloud ? [] : await nc.list(donePath).catch(() => []);
+  for (const item of doneJobs) {
+    if (item.isDir || !olderThan(item.modified, printCutoff)) continue;
+    deletedPrintHistory.push(item.name);
+    if (!dryRun) {
+      await nc.remove(`${donePath}/${item.name}`);
+      logAudit({ action: 'delete_print_history', name: item.name });
     }
   }
 
   return {
     dryRun,
-    localRetentionDays: retentionConfig.localRetentionDays,
+    policy: retentionConfig,
+    disk: await diskStatus(),
     deletedLocal,
     deletedCloud,
+    revokedShares,
+    deletedPrintHistory,
     timestamp: new Date().toISOString(),
   };
 }

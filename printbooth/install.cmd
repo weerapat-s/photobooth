@@ -13,7 +13,7 @@ if errorlevel 1 (
 
 if not exist ".env" (
   copy ".env.example" ".env" >nul
-  echo [+] สร้างไฟล์ .env แล้ว - แก้ PRINTER_ID กับ PRINTER_NAME ให้ตรงเครื่องนี้
+  echo [+] สร้างไฟล์ .env แล้ว - ต้องกรอก PRINTER_ID, PRINTER_NAME และค่า Nextcloud
 )
 
 echo [*] ติดตั้ง dependency...
@@ -29,6 +29,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "launch\install-shortcuts.ps
 
 echo.
 echo === เสร็จแล้ว ===
-echo แก้ไฟล์ .env ให้ PRINTER_ID ไม่ซ้ำกับเครื่องอื่น แล้วดับเบิลคลิกไอคอน "บูทปริ้น"
+echo แก้ไฟล์ .env ให้ PRINTER_ID ไม่ซ้ำ พร้อมกรอก NC_SHARE_TOKEN/NC_SHARE_PASSWORD แล้วเปิดไอคอน "บูทปริ้น"
 notepad .env
 pause

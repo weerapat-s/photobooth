@@ -20,7 +20,9 @@ function Get-EnvValue([string]$key, [string]$fallback) {
   return $fallback
 }
 
-$port = [int](Get-EnvValue "PRINT_PORT" "4701")
+$adminPort = [int](Get-EnvValue "PRINT_PORT" "4701")
+$boardPort = [int](Get-EnvValue "BOARD_PORT" "4702")
+$port = if ($Page -eq "/queue.html") { $boardPort } else { $adminPort }
 $title = "บูทปริ้น"
 $logDir = Join-Path $root "logs"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
@@ -57,14 +59,14 @@ if (-not (Test-Path -LiteralPath (Join-Path $root "node_modules\express"))) {
 }
 
 $serverProc = $null
-if (-not (Test-Port $port)) {
+if (-not (Test-Port $adminPort)) {
   $serverProc = Start-Process -FilePath $node -ArgumentList "`"$(Join-Path $root 'index.js')`"" -WorkingDirectory $root `
     -WindowStyle Hidden -PassThru -RedirectStandardOutput $log -RedirectStandardError "$log.err"
 
   $ready = $false
   foreach ($i in 1..60) {
     Start-Sleep -Milliseconds 400
-    if (Test-Port $port) { $ready = $true; break }
+    if ((Test-Port $adminPort) -and (Test-Port $port)) { $ready = $true; break }
     if ($serverProc.HasExited) { break }
   }
   if (-not $ready) {
@@ -106,6 +108,9 @@ else {
 if ($serverProc -and -not $serverProc.HasExited) {
   Start-Sleep -Milliseconds 800
   $others = @(Get-CimInstance Win32_Process -Filter "name='msedge.exe' or name='chrome.exe'" -ErrorAction SilentlyContinue |
-    Where-Object { $_.CommandLine -like "*--app=http://localhost:$port*" })
+    Where-Object {
+      $_.CommandLine -like "*--app=http://localhost:$adminPort*" -or
+      $_.CommandLine -like "*--app=http://localhost:$boardPort*"
+    })
   if ($others.Count -eq 0) { Stop-Process -Id $serverProc.Id -Force -ErrorAction SilentlyContinue }
 }

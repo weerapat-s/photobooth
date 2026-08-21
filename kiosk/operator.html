@@ -39,13 +39,19 @@
     border: 1px solid #33333f; background: #101018; color: #f2f2f5;
   }
   label { display: block; font-size: 13px; color: #9a9aa8; margin: 12px 0 5px; }
-  .thumbs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
-  .thumbs img { height: 84px; border-radius: 8px; }
+  .slot-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 14px; }
+  .photo-slot { border: 1px solid #30303b; border-radius: 12px; padding: 10px; background: #111119; }
+  .photo-slot h3 { margin: 0 0 8px; font-size: 14px; color: #cfcfd8; }
+  .slot-preview { width: 100%; aspect-ratio: 3 / 2; border-radius: 8px; background: #23232d; display: grid; place-items: center; overflow: hidden; color: #777785; }
+  .slot-preview img { width: 100%; height: 100%; object-fit: cover; }
+  .slot-actions { display: flex; gap: 6px; margin-top: 8px; }
+  .slot-actions button { flex: 1; padding: 8px 6px; font-size: 12px; }
+  button.danger { background: #59212d; color: #ffafbd; }
   .browser { max-height: 260px; overflow: auto; margin-top: 10px; border: 1px solid #2a2a35; border-radius: 10px; }
   .browser div { padding: 9px 12px; cursor: pointer; border-bottom: 1px solid #20202a; font-size: 14px; }
   .browser div:hover { background: #1e1e28; }
   .ok { color: #8ef0ae; } .bad { color: #ff8fa3; } .warn { color: #ffd166; }
-  .msg { min-height: 20px; font-size: 13px; margin-top: 10px; }
+  .msg { min-height: 20px; font-size: 13px; margin-top: 10px; white-space: pre-line; }
   code { color: #ffd166; font-size: 12px; word-break: break-all; }
 </style>
 </head>
@@ -61,13 +67,13 @@
     <div class="row"><b>รหัสเซสชัน</b><span id="sid">-</span></div>
     <div class="row"><b>เลขคิวปริ้น</b><span id="qnum">-</span></div>
     <div class="row"><b>ข้อความ</b><span id="msg">-</span></div>
-    <div class="thumbs" id="thumbs"></div>
+    <div class="slot-grid" id="slots"></div>
     <div class="btns">
-      <button id="btn-start">เริ่มถ่าย</button>
-      <button id="btn-finish">ปิดเซสชัน + อัปโหลดเลย</button>
+      <button id="btn-start">เริ่มเซสชันใหม่</button>
+      <button id="btn-capture">ถ่ายช่องถัดไป</button>
+      <button id="btn-finish">ยืนยันรูปทั้งหมด + จบงาน</button>
       <button class="ghost" id="btn-discard">ทิ้งเซสชัน</button>
       <button class="ghost" id="btn-print">ส่งปริ้น</button>
-      <button class="ghost" id="btn-mock">ยิงช็อตทดสอบ</button>
     </div>
     <div class="msg" id="action-msg"></div>
   </div>
@@ -81,19 +87,55 @@
     <div class="row"><b>ลิงก์แยกต่อเซสชัน</b><span id="share-state">-</span></div>
     <div class="row"><b>ffmpeg</b><span id="ff-state">-</span></div>
     <div class="row"><b>ลิงก์ล่าสุด</b><code id="last-link">-</code></div>
+    <div class="btns">
+      <button id="btn-preflight">Production Preflight</button>
+      <button class="ghost" id="btn-cal-strip">Calibration 2x6</button>
+      <button class="ghost" id="btn-cal-grid">Calibration 4x6</button>
+    </div>
+    <div class="msg" id="preflight-msg"></div>
+  </div>
+
+  <div class="card">
+    <h2>กู้คืนและดูแลข้อมูล</h2>
+    <div id="unfinished"><div class="row"><span>กำลังตรวจงานค้าง...</span></div></div>
+    <div class="btns">
+      <button class="ghost" id="btn-clean-preview">ดูรายการหมดอายุ</button>
+      <button class="ghost" id="btn-clean-now">ลบรายการหมดอายุ</button>
+    </div>
+    <div class="msg" id="cleanup-msg"></div>
   </div>
 
   <div class="card">
     <h2>ตั้งค่า</h2>
-    <label>แหล่งภาพ</label>
-    <select id="in-source">
-      <option value="digicam">digicam — แอปคุมกล้องผ่าน digiCamControl (มี live view)</option>
-      <option value="folder">folder — เฝ้าโฟลเดอร์ Capture One (ช่างกดชัตเตอร์เอง)</option>
-      <option value="mock">mock — ภาพปลอม ไว้เทสต์</option>
+    <label>รูปแบบการใช้งานหน้าจอลูกค้า</label>
+    <select id="in-kiosk-mode">
+      <option value="operator">เจ้าหน้าที่ควบคุม — จอลูกค้าใช้ดูอย่างเดียว</option>
+      <option value="self_service">บริการตัวเอง — ลูกค้ากดเริ่ม ตรวจรูป และถ่ายซ้ำเอง</option>
     </select>
 
-    <label>นับถอยหลังก่อนแต่ละช็อต (วินาที) — เฉพาะโหมด digicam</label>
+    <label>แหล่งภาพ</label>
+    <select id="in-source">
+      <option value="digicam">digicam — เจ้าหน้าที่กดถ่ายผ่าน digiCamControl</option>
+      <option value="folder">folder — เฝ้าโฟลเดอร์ Capture One (ช่างกดชัตเตอร์เอง)</option>
+      <option value="mock">mock — ภาพปลอม ไว้เทสต์</option>
+      <option value="web">web — เว็บ PWA ใช้กล้องของ iPad โดยตรง (ไม่ต้องติดตั้งแอป)</option>
+      <option value="ipad">ipad — แอป Native iPad คุม EOS R ผ่าน USB และส่งภาพเข้าเซิร์ฟเวอร์</option>
+    </select>
+
+    <label>นับถอยหลังก่อนแต่ละช็อต (วินาที) — โหมด digicam/web</label>
     <input id="in-countdown" type="number" min="0" max="10">
+
+    <label>กล้องสำหรับโหมด web</label>
+    <select id="in-web-facing">
+      <option value="user">กล้องหน้า — ลูกค้าเห็นตัวเอง</option>
+      <option value="environment">กล้องหลัง — คุณภาพสูงกว่า</option>
+    </select>
+
+    <label>บันทึกภาพแบบกระจกในโหมด web</label>
+    <select id="in-web-mirror">
+      <option value="true">ใช่ — เหมือนภาพที่เห็นบนจอ</option>
+      <option value="false">ไม่ — บันทึกตามทิศจริงของกล้อง</option>
+    </select>
 
     <label>โฟลเดอร์ Capture ของ Capture One — เฉพาะโหมด folder</label>
     <input id="in-watch" placeholder="เช่น D:\งานรับน้อง\Capture">
@@ -151,12 +193,75 @@ function applyState(s) {
   $('qnum').textContent = s.session && s.session.queueNumber ? '#' + s.session.queueNumber : '-';
   $('msg').textContent = s.message || '-';
   $('event-name').textContent = s.eventName || 'Photo Booth';
-  $('thumbs').innerHTML = s.session ? s.session.previews.map((u) => '<img src="' + u + '">').join('') : '';
+  renderSlots(s);
   if (s.session && s.session.shareUrl) $('last-link').textContent = s.session.shareUrl;
-  $('btn-start').disabled = s.captureSource === 'folder' || s.phase === 'shooting' || s.phase === 'processing';
-  $('btn-finish').disabled = !(s.phase === 'shooting' && s.session && s.session.count > 0);
+  $('btn-start').disabled = s.phase === 'shooting' || s.phase === 'processing' || s.capturing;
+  const externalCapture = ['folder', 'web', 'ipad'].includes(s.captureSource);
+  $('btn-capture').disabled = !(s.phase === 'shooting' && s.session && s.session.count < s.session.total) || s.capturing || externalCapture;
+  $('btn-capture').textContent = s.captureSource === 'folder' ? 'กดชัตเตอร์ที่กล้อง' : externalCapture ? 'ถ่ายจาก iPad' : 'ถ่ายช่องถัดไป';
+  $('btn-finish').disabled = !(s.phase === 'shooting' && s.session && s.session.count === s.session.total) || s.capturing;
   $('btn-discard').disabled = s.phase === 'processing' || s.phase === 'idle';
   $('btn-print').disabled = !(s.phase === 'done' && s.session && !s.session.printed);
+}
+
+function renderSlots(s) {
+  const box = $('slots');
+  box.innerHTML = '';
+  for (const slot of s.session?.slots || []) {
+    const card = document.createElement('div');
+    card.className = 'photo-slot';
+    const title = document.createElement('h3');
+    title.textContent = 'รูปที่ ' + slot.number;
+    const preview = document.createElement('div');
+    preview.className = 'slot-preview';
+    if (slot.preview) {
+      const img = document.createElement('img');
+      img.src = slot.preview;
+      img.alt = 'รูปที่ ' + slot.number;
+      preview.appendChild(img);
+    } else {
+      preview.textContent = 'ยังไม่มีรูป';
+    }
+    const actions = document.createElement('div');
+    actions.className = 'slot-actions';
+    const captureButton = document.createElement('button');
+    captureButton.textContent = slot.filled ? 'ถ่ายใหม่' : 'ถ่ายช่องนี้';
+    captureButton.disabled = s.capturing || s.phase !== 'shooting' || s.captureSource === 'folder';
+    captureButton.onclick = () => capturePhoto(slot.number, slot.filled);
+    actions.appendChild(captureButton);
+    if (slot.filled) {
+      const removeButton = document.createElement('button');
+      removeButton.className = 'danger';
+      removeButton.textContent = 'ลบรูป';
+      removeButton.disabled = s.capturing || s.phase !== 'shooting';
+      removeButton.onclick = () => removePhoto(slot.number);
+      actions.appendChild(removeButton);
+    }
+    card.append(title, preview, actions);
+    box.appendChild(card);
+  }
+}
+
+async function capturePhoto(slot = null, replacing = false) {
+  if (replacing && !confirm('ถ่ายรูปช่องนี้ใหม่? รูปเดิมจะถูกเอาออกเมื่อรูปใหม่บันทึกสำเร็จ')) return;
+  $('action-msg').textContent = 'กำลังถ่าย' + (slot ? 'รูปที่ ' + slot : 'ช่องถัดไป') + '...';
+  try {
+    await api('/api/capture', { method: 'POST', body: JSON.stringify({ slot }) });
+    $('action-msg').innerHTML = '<span class="ok">ถ่ายเสร็จแล้ว กรุณาตรวจรูป</span>';
+  } catch (err) {
+    $('action-msg').innerHTML = '<span class="bad">' + err.message + '</span>';
+  }
+}
+
+async function removePhoto(slot) {
+  if (!confirm('ลบรูปที่ ' + slot + ' ออกจากเซสชัน? รูปอื่นจะอยู่ช่องเดิม')) return;
+  $('action-msg').textContent = 'กำลังลบรูปที่ ' + slot + '...';
+  try {
+    await api('/api/photo/' + slot, { method: 'DELETE' });
+    $('action-msg').innerHTML = '<span class="ok">ลบแล้ว กดถ่ายรูปที่ ' + slot + ' ใหม่ได้เลย</span>';
+  } catch (err) {
+    $('action-msg').innerHTML = '<span class="bad">' + err.message + '</span>';
+  }
 }
 
 async function refreshHealth() {
@@ -181,8 +286,11 @@ async function refreshHealth() {
 
 async function loadConfig() {
   const c = await api('/api/config');
+  $('in-kiosk-mode').value = c.kioskMode || 'operator';
   $('in-source').value = c.captureSource;
   $('in-countdown').value = c.countdown;
+  $('in-web-facing').value = c.webCameraFacing || 'user';
+  $('in-web-mirror').value = String(c.webMirror ?? true);
   $('in-watch').value = c.watchDir || '';
   $('in-shots').value = c.shots;
   $('in-printshots').value = c.printShots;
@@ -192,6 +300,79 @@ async function loadConfig() {
   $('in-themecolor').value = c.printThemeColor;
   $('in-autoprint').value = String(c.printOnDone);
   browse(c.watchDir || null);
+}
+
+async function runPreflight() {
+  $('preflight-msg').textContent = 'กำลังตรวจกล้อง ดิสก์ และ Nextcloud...';
+  try {
+    const report = await api('/api/preflight?deep=true');
+    const lines = report.checks.map((c) => (c.pass ? '✓ ' : '✗ ') + c.name + ': ' + (c.detail || c.error || ''));
+    $('preflight-msg').textContent = report.status + '\n' + lines.join('\n');
+    $('preflight-msg').className = 'msg ' + (report.status === 'READY' ? 'ok' : report.status === 'BLOCKED' ? 'bad' : 'warn');
+  } catch (err) {
+    $('preflight-msg').textContent = err.message;
+    $('preflight-msg').className = 'msg bad';
+  }
+}
+
+async function refreshUnfinished() {
+  const data = await api('/api/unfinished').catch(() => ({ unfinished: [] }));
+  const box = $('unfinished');
+  box.innerHTML = '';
+  if (!data.unfinished.length) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.textContent = 'ไม่มีเซสชันค้าง';
+    box.appendChild(row);
+    return;
+  }
+  for (const item of data.unfinished) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    const label = document.createElement('span');
+    label.textContent = item.id + ' (' + item.validPhotosCount + ' รูป, ' + item.phase + ')';
+    const actions = document.createElement('span');
+    const resume = document.createElement('button');
+    resume.textContent = 'ทำต่อ';
+    resume.onclick = () => recover(item.id, 'resume');
+    const discardButton = document.createElement('button');
+    discardButton.className = 'ghost';
+    discardButton.textContent = 'ทิ้ง local';
+    discardButton.onclick = () => recover(item.id, 'discard');
+    actions.append(resume, discardButton);
+    row.append(label, actions);
+    box.appendChild(row);
+  }
+}
+
+async function recover(id, action) {
+  if (action === 'discard' && !confirm('ลบไฟล์ local ของเซสชันนี้?')) return;
+  try {
+    await api('/api/recover/' + encodeURIComponent(id), { method: 'POST', body: JSON.stringify({ action }) });
+    $('action-msg').textContent = action === 'resume' ? 'เริ่มกู้คืนแล้ว' : 'ลบงาน local แล้ว';
+  } catch (err) {
+    $('action-msg').textContent = err.message;
+  }
+  refreshUnfinished();
+}
+
+async function cleanup(dryRun) {
+  if (!dryRun && !confirm('ลบข้อมูลที่หมดอายุตามนโยบายจริง? การลบบน Nextcloud ย้อนกลับไม่ได้')) return;
+  $('cleanup-msg').textContent = 'กำลังตรวจ...';
+  try {
+    const data = await api('/api/cleanup?dryRun=' + String(dryRun), { method: 'POST' });
+    const r = data.result;
+    $('cleanup-msg').textContent = [
+      dryRun ? 'ตัวอย่างรายการที่จะลบ' : 'ลบเสร็จแล้ว',
+      'local ' + r.deletedLocal.length,
+      'cloud ' + r.deletedCloud.length,
+      'shares ' + r.revokedShares.length,
+      'ประวัติปริ้น ' + r.deletedPrintHistory.length,
+      r.disk.freeGb === null ? '' : 'ดิสก์เหลือ ' + r.disk.freeGb.toFixed(1) + ' GB',
+    ].filter(Boolean).join(' · ');
+  } catch (err) {
+    $('cleanup-msg').textContent = err.message;
+  }
 }
 
 async function browse(dir) {
@@ -225,8 +406,11 @@ $('btn-save').onclick = async () => {
     await api('/api/settings', {
       method: 'POST',
       body: JSON.stringify({
+        KIOSK_MODE: $('in-kiosk-mode').value,
         CAPTURE_SOURCE: $('in-source').value,
         COUNTDOWN: Number($('in-countdown').value),
+        WEB_CAMERA_FACING: $('in-web-facing').value,
+        WEB_MIRROR: $('in-web-mirror').value,
         WATCH_DIR: $('in-watch').value.trim(),
         SHOTS: Number($('in-shots').value),
         PRINT_SHOTS: Number($('in-printshots').value),
@@ -255,16 +439,31 @@ function bindAction(id, path, label) {
     }
   };
 }
-bindAction('btn-start', '/api/start', 'เริ่มถ่ายแล้ว');
-bindAction('btn-finish', '/api/finish', 'ปิดเซสชันแล้ว');
+bindAction('btn-start', '/api/start', 'เริ่มเซสชันแล้ว — กดถ่ายทีละช่อง');
 bindAction('btn-discard', '/api/discard', 'ทิ้งเซสชันแล้ว');
 bindAction('btn-print', '/api/print', 'ส่งเข้าคิวปริ้นแล้ว');
-bindAction('btn-mock', '/api/mock-shot', 'ยิงช็อตทดสอบแล้ว');
+$('btn-capture').onclick = () => capturePhoto();
+$('btn-finish').onclick = async () => {
+  if (!confirm('ยืนยันใช้รูปทุกช่องและจบงาน? หลังจากนี้จะเริ่มจัดภาพและอัปโหลด')) return;
+  $('action-msg').textContent = 'กำลังจัดภาพและอัปโหลด...';
+  try {
+    await api('/api/finish', { method: 'POST' });
+    $('action-msg').innerHTML = '<span class="ok">จบงานแล้ว</span>';
+  } catch (err) {
+    $('action-msg').innerHTML = '<span class="bad">' + err.message + '</span>';
+  }
+};
+$('btn-preflight').onclick = runPreflight;
+$('btn-cal-strip').onclick = () => window.open('/api/calibration?layout=strip2x6', '_blank');
+$('btn-cal-grid').onclick = () => window.open('/api/calibration?layout=grid4x6', '_blank');
+$('btn-clean-preview').onclick = () => cleanup(true);
+$('btn-clean-now').onclick = () => cleanup(false);
 
 const es = new EventSource('/api/events');
 es.onmessage = (ev) => applyState(JSON.parse(ev.data));
 loadConfig();
 refreshHealth();
+refreshUnfinished();
 setInterval(refreshHealth, 10000);
 </script>
 </body>

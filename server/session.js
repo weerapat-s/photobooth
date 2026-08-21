@@ -1,6 +1,7 @@
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
+import { createHash } from 'node:crypto';
 import QRCode from 'qrcode';
 import { config } from './config.js';
 import { camera } from './camera.js';
@@ -8,7 +9,7 @@ import { watcher, mockShot } from './watcher.js';
 import { composePrint, makePreview } from './compose.js';
 import { makeVideoFromFrames } from './video.js';
 import * as nc from './nextcloud.js';
-import { saveJournal, loadJournal, scanUnfinishedSessions } from './journal.js';
+import { saveJournal, loadJournal, scanUnfinishedSessions, filterExistingPaths } from './journal.js';
 
 export const bus = new EventEmitter();
 bus.setMaxListeners(50);
@@ -42,11 +43,25 @@ const ALLOWED_TRANSITIONS = {
   error: ['idle', 'shooting'],
 };
 
-let actionLock = false;
 let currentCancelToken = null;
+let photoQueue = Promise.resolve();
+
+const filledPhotos = (session) => (session?.photos || []).filter((file) => typeof file === 'string' && file);
+
+function normalizeSlots(session) {
+  if (!session) return;
+  session.photos = Array.from({ length: config.shots }, (_, i) => session.photos?.[i] || null);
+  session.previews = Array.from({ length: config.shots }, (_, i) => session.previews?.[i] || null);
+}
 
 export function snapshot(extra = {}) {
   const s = state.session;
+  if (s) normalizeSlots(s);
+  const slots = s ? Array.from({ length: config.shots }, (_, i) => ({
+    number: i + 1,
+    filled: Boolean(s.photos[i]),
+    preview: s.previews[i] ? `/api/session/${s.id}/file/${s.previews[i]}` : null,
+  })) : [];
   return {
     phase: state.phase,
     message: state.message,
@@ -57,11 +72,14 @@ export function snapshot(extra = {}) {
     shots: config.shots,
     eventName: config.eventName,
     captureSource: config.captureSource,
+    capturing,
     session: s && {
       id: s.id,
       total: config.shots,
-      count: s.photos.length,
-      previews: s.previews.map((n) => `/api/session/${s.id}/file/${n}`),
+      count: filledPhotos(s).length,
+      slots,
+      previews: slots.filter((slot) => slot.preview).map((slot) => slot.preview),
+      activePreview: state.shot > 0 ? slots[state.shot - 1]?.preview || null : null,
       shareUrl: s.shareUrl || null,
       qr: s.qr || null,
       printed: Boolean(s.printed),
@@ -76,7 +94,7 @@ function emit(patch = {}) {
   if (patch.phase && patch.phase !== state.phase) {
     const validNext = ALLOWED_TRANSITIONS[state.phase] || [];
     if (!validNext.includes(patch.phase)) {
-      console.warn(`[state] Invalid transition requested: ${state.phase} -> ${patch.phase}`);
+      throw new Error(`Invalid session transition: ${state.phase} -> ${patch.phase}`);
     }
   }
   Object.assign(state, patch);
@@ -108,12 +126,7 @@ function newSession() {
 
 function armIdleTimer() {
   clearTimeout(idleTimer);
-  if (config.captureSource !== 'folder') return;
-  idleTimer = setTimeout(() => {
-    if (state.phase === 'shooting' && state.session?.photos.length) {
-      finish('หมดเวลารอช็อตถัดไป').catch(reportError);
-    }
-  }, config.sessionIdleSeconds * 1000);
+  // โหมดเจ้าหน้าที่ควบคุม: ห้ามจบเซสชันเองแม้เว้นช่วงนาน
 }
 
 function reportError(err) {
@@ -130,127 +143,248 @@ async function beginSession() {
 
   const s = newSession();
   await fsp.mkdir(s.localDir, { recursive: true });
-  emit({ phase: 'shooting', session: s, message: '', countdown: 0 });
+  normalizeSlots(s);
+  emit({ phase: 'shooting', session: s, message: 'พร้อมถ่ายรูปที่ 1 — รอเจ้าหน้าที่กดถ่าย', countdown: 0, shot: 0 });
   return s;
 }
 
-/** เพิ่มหนึ่งช็อตเข้าเซสชัน (มาจากกล้องหรือจากโฟลเดอร์ที่เฝ้าอยู่) */
-async function addPhoto(file) {
-  if (actionLock) {
-    console.warn('[session] Action locked, buffering photo:', file);
+async function removeSupersededFiles(s, photo, preview, replacementPhoto = null) {
+  if (photo && (!replacementPhoto || path.resolve(photo) !== path.resolve(replacementPhoto))) {
+    const rawRoot = `${path.resolve(s.rawDir)}${path.sep}`.toLowerCase();
+    const resolved = path.resolve(photo).toLowerCase();
+    if (resolved.startsWith(rawRoot)) await fsp.unlink(photo).catch(() => {});
+  }
+  if (preview) await fsp.unlink(path.join(s.localDir, path.basename(preview))).catch(() => {});
+}
+
+async function invalidateGeneratedOutputs(s) {
+  for (const key of ['cardFile', 'printFile', 'videoFile', 'gifFile']) {
+    const file = s[key];
+    if (file && path.resolve(file).startsWith(`${path.resolve(s.localDir)}${path.sep}`)) {
+      await fsp.unlink(file).catch(() => {});
+    }
+    s[key] = null;
+  }
+  s.uploaded = [];
+  s.forceUploadAll = true;
+}
+
+/** วางภาพลงช่องคงที่ รูปอื่นจะไม่เลื่อนเมื่อมีการลบหรือถ่ายซ้ำ */
+async function handlePhoto(file, requestedSlot = null) {
+  if (state.phase === 'processing') {
     buffered.push(file);
     return;
   }
-  actionLock = true;
-  try {
-    if (state.phase === 'processing') {
-      buffered.push(file);
-      return;
-    }
-    if (state.phase !== 'shooting') await beginSession();
-
-    const s = state.session;
-    s.photos.push(file);
-    const name = `preview-${s.photos.length}.jpg`;
-    try {
-      await makePreview(file, s.localDir, name);
-      s.previews.push(name);
-    } catch (err) {
-      console.warn('[session] ทำภาพพรีวิวไม่ได้:', err.message);
-    }
-    emit({ lastPhotoAt: Date.now(), countdown: 0 });
-
-    if (s.photos.length >= config.shots) await finish('ครบจำนวนช็อต');
-    else armIdleTimer();
-  } finally {
-    actionLock = false;
+  if (state.phase !== 'shooting' || !state.session) {
+    throw new Error('ต้องให้เจ้าหน้าที่กดเริ่มเซสชันก่อนถ่าย');
   }
+
+  const s = state.session;
+  normalizeSlots(s);
+  const slotIndex = requestedSlot === null
+    ? s.photos.findIndex((photo) => !photo)
+    : Number(requestedSlot);
+  if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex >= config.shots) {
+    throw new Error('ไม่มีช่องรูปว่างหรือหมายเลขช่องไม่ถูกต้อง');
+  }
+
+  const oldPhoto = s.photos[slotIndex];
+  const oldPreview = s.previews[slotIndex];
+  const name = `preview-${slotIndex + 1}-${Date.now()}.jpg`;
+  await makePreview(file, s.localDir, name);
+  s.photos[slotIndex] = file;
+  s.previews[slotIndex] = name;
+  await removeSupersededFiles(s, oldPhoto, oldPreview, file);
+  await invalidateGeneratedOutputs(s);
+
+  const count = filledPhotos(s).length;
+  emit({
+    lastPhotoAt: Date.now(),
+    countdown: 0,
+    shot: slotIndex + 1,
+    message: count >= config.shots
+      ? 'ครบทุกช่องแล้ว — เจ้าหน้าที่ตรวจรูปแล้วกดยืนยันจบงาน'
+      : `รูปที่ ${slotIndex + 1} พร้อมตรวจ — เลือกถ่ายใหม่หรือถ่ายช่องถัดไป`,
+  });
+  armIdleTimer();
 }
 
-/** โหมด digicam: แอปนับถอยหลังและสั่งชัตเตอร์เอง */
-export async function startSession() {
-  if (config.captureSource === 'folder') {
-    throw new Error('โหมดเฝ้าโฟลเดอร์ — ช่างกดชัตเตอร์เอง ไม่ต้องกดเริ่ม');
-  }
-  if (capturing || state.phase === 'processing' || actionLock) throw new Error('กำลังทำงานอยู่');
+function addPhoto(file, slotIndex = null) {
+  const task = photoQueue.then(() => handlePhoto(file, slotIndex));
+  photoQueue = task.catch(() => {});
+  return task;
+}
 
-  capturing = true;
+/** เจ้าหน้าที่เริ่มเซสชันก่อน แล้วจึงกดถ่ายทีละช่อง */
+export async function startSession() {
+  if (capturing || state.phase === 'processing') throw new Error('กำลังทำงานอยู่');
+  if (state.phase === 'shooting') throw new Error('มีเซสชันที่กำลังถ่ายอยู่แล้ว');
+
+  if (config.captureSource === 'digicam') {
+    const cameraStatus = await camera.status();
+    if (!cameraStatus.ok) {
+      throw new Error(cameraStatus.error || 'digiCamControl ยังไม่เห็นกล้อง');
+    }
+  }
+
   const s = await beginSession();
-  const token = currentCancelToken;
-  runCaptureLoop(s, token).catch(reportError).finally(() => { capturing = false; });
+  try {
+    if (config.captureSource === 'digicam') await camera.setSessionFolder(s.rawDir);
+    else await fsp.mkdir(s.rawDir, { recursive: true });
+  } catch (err) {
+    reportError(err);
+    throw err;
+  }
   return s.id;
 }
 
-async function runCaptureLoop(s, cancelToken) {
+export async function captureSlot(slotNumber = null) {
+  if (capturing) throw new Error('กล้องกำลังทำงานอยู่ กรุณารอ');
+  if (state.phase !== 'shooting' || !state.session) throw new Error('ต้องกดเริ่มเซสชันก่อน');
+  if (config.captureSource === 'folder') throw new Error('โหมด folder ให้เจ้าหน้าที่กดชัตเตอร์ที่กล้อง ภาพจะเข้าช่องว่างอัตโนมัติ');
+  if (config.captureSource === 'ipad' || config.captureSource === 'web') {
+    throw new Error('โหมด iPad/Web ต้องส่งภาพ JPEG จากอุปกรณ์เข้า API');
+  }
+
+  const s = state.session;
+  normalizeSlots(s);
+  const slotIndex = slotNumber === null || slotNumber === undefined
+    ? s.photos.findIndex((photo) => !photo)
+    : Number(slotNumber) - 1;
+  if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex >= config.shots) {
+    throw new Error('หมายเลขช่องรูปไม่ถูกต้องหรือรูปครบแล้ว');
+  }
+
+  capturing = true;
+  const cancelToken = currentCancelToken;
   const mock = config.captureSource === 'mock';
-  if (!mock) {
-    await camera.setSessionFolder(s.rawDir);
-    await camera.startLiveView();
-  } else {
-    await fsp.mkdir(s.rawDir, { recursive: true });
-  }
-
   try {
-    for (let i = 1; i <= config.shots; i++) {
-      if (cancelToken?.cancelled) break;
-      for (let t = config.countdown; t >= 1; t--) {
-        if (cancelToken?.cancelled) break;
-        emit({ countdown: t, shot: i });
-        await sleep(1000);
-      }
-      if (cancelToken?.cancelled) break;
-      emit({ countdown: 0, shot: i });
-      bus.emit('update', snapshot({ flash: true }));
-      emit({ message: 'กำลังบันทึกภาพ...' });
-
-      const file = mock ? await mockShot(s.rawDir) : await camera.capture(s.rawDir);
-      if (cancelToken?.cancelled) break;
-      await addPhoto(file);
-      if (state.phase !== 'shooting' || cancelToken?.cancelled) break;
-      await sleep(config.shotGapSeconds * 1000);
+    for (let t = config.countdown; t >= 1; t--) {
+      if (cancelToken?.cancelled) throw new Error('ยกเลิกการถ่ายแล้ว');
+      emit({ countdown: t, shot: slotIndex + 1, message: `เตรียมถ่ายรูปที่ ${slotIndex + 1}` });
+      await sleep(1000);
     }
+    if (cancelToken?.cancelled) throw new Error('ยกเลิกการถ่ายแล้ว');
+    emit({ countdown: 0, shot: slotIndex + 1, message: `กำลังบันทึกรูปที่ ${slotIndex + 1}...` });
+    bus.emit('update', snapshot({ flash: true }));
+    const file = mock ? await mockShot(s.rawDir) : await camera.capture(s.rawDir);
+    if (cancelToken?.cancelled) return null;
+    await addPhoto(file, slotIndex);
+    return file;
+  } catch (err) {
+    if (!cancelToken?.cancelled && state.phase === 'shooting') {
+      emit({ countdown: 0, message: `ถ่ายรูปที่ ${slotIndex + 1} ไม่สำเร็จ: ${err.message}` });
+    }
+    throw err;
   } finally {
-    if (!mock) await camera.stopLiveView();
+    capturing = false;
+    if (state.phase === 'shooting') emit({});
   }
+}
+
+/** รับ JPEG จากแอป iPad เดิมหรือ PWA แล้ววางลงช่องเดิมของ pipeline */
+export async function ingestIpadPhoto(slotNumber, data) {
+  if (state.phase !== 'shooting' || !state.session) throw new Error('ต้องเริ่มเซสชันก่อนส่งภาพ');
+  if (!Buffer.isBuffer(data) || data.length < 4) throw new Error('ไม่พบข้อมูลภาพ JPEG');
+  if (data[0] !== 0xff || data[1] !== 0xd8) throw new Error('รองรับเฉพาะไฟล์ JPEG');
+
+  const slotIndex = Number(slotNumber) - 1;
+  if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex >= config.shots) {
+    throw new Error('หมายเลขช่องรูปไม่ถูกต้อง');
+  }
+
+  const s = state.session;
+  await fsp.mkdir(s.rawDir, { recursive: true });
+  const prefix = config.captureSource === 'web' ? 'web' : 'ipad';
+  const file = path.join(s.rawDir, `${prefix}-${slotIndex + 1}-${Date.now()}.jpg`);
+  await fsp.writeFile(file, data);
+  try {
+    await addPhoto(file, slotIndex);
+    return file;
+  } catch (err) {
+    await fsp.unlink(file).catch(() => {});
+    throw err;
+  }
+}
+
+export async function deletePhoto(slotNumber) {
+  if (capturing) throw new Error('กล้องกำลังทำงานอยู่ กรุณารอ');
+  if (state.phase !== 'shooting' || !state.session) throw new Error('ไม่มีเซสชันที่กำลังถ่าย');
+  const slotIndex = Number(slotNumber) - 1;
+  if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex >= config.shots) throw new Error('หมายเลขช่องรูปไม่ถูกต้อง');
+  const s = state.session;
+  normalizeSlots(s);
+  if (!s.photos[slotIndex]) throw new Error(`ช่องรูปที่ ${slotNumber} ว่างอยู่แล้ว`);
+  const oldPhoto = s.photos[slotIndex];
+  const oldPreview = s.previews[slotIndex];
+  s.photos[slotIndex] = null;
+  s.previews[slotIndex] = null;
+  await removeSupersededFiles(s, oldPhoto, oldPreview);
+  await invalidateGeneratedOutputs(s);
+  emit({ shot: slotIndex + 1, message: `ลบรูปที่ ${slotNumber} แล้ว — กดถ่ายช่องนี้ใหม่ได้เลย` });
 }
 
 async function finish(reason) {
   clearTimeout(idleTimer);
   const s = state.session;
-  if (!s || !s.photos.length) return;
+  const validPhotos = filledPhotos(s);
+  if (!s || !validPhotos.length) return;
 
   emit({ phase: 'processing', message: 'กำลังจัดหน้าและทำวิดีโอ...', countdown: 0 });
-  console.log(`[session] ปิดเซสชัน ${s.id} (${reason}) — ${s.photos.length} ช็อต`);
+  console.log(`[session] ปิดเซสชัน ${s.id} (${reason}) — ${validPhotos.length} ช็อต`);
 
   // การ์ด/ชีทปริ้นใช้แค่ช็อตล่าสุด N ภาพ (PRINT_SHOTS) ไม่ใช่ทุกช็อตที่ถ่าย — วิดีโอด้านล่างยังใช้ครบทุกช็อต
-  const printPhotos = s.photos.slice(-config.printShots);
-  const { print, card } = await composePrint(printPhotos, s.localDir, {
-    title: config.eventName,
-    subtitle: new Date(s.startedAt).toLocaleString('th-TH'),
-    date: new Date(s.startedAt),
-  });
-  s.printFile = print;
-  s.cardFile = card;
+  const generatedFilesExist = s.printFile && s.cardFile
+    && filterExistingPaths([s.printFile, s.cardFile]).length === 2;
+  if (!generatedFilesExist) {
+    const printPhotos = validPhotos.slice(-config.printShots);
+    const { print, card } = await composePrint(printPhotos, s.localDir, {
+      title: config.eventName,
+      subtitle: new Date(s.startedAt).toLocaleString('th-TH'),
+      date: new Date(s.startedAt),
+    });
+    s.printFile = print;
+    s.cardFile = card;
+  }
 
-  const video = await makeVideoFromFrames(s.photos, s.localDir);
-  s.videoFile = video.mp4;
+  if (!s.videoFile || !filterExistingPaths([s.videoFile]).length) {
+    const video = await makeVideoFromFrames(validPhotos, s.localDir);
+    s.videoFile = video.mp4;
+    s.gifFile = video.gif || null;
+  }
 
   emit({ message: 'กำลังอัปโหลดขึ้นคลาวด์...' });
-  const remoteDir = `${nc.NC_ROOT}/${s.id}`;
-  await nc.ensureDir(remoteDir);
-
-  const uploads = [[card, 'card.jpg'], [video.mp4, 'video.mp4']];
-  if (video.gif) uploads.push([video.gif, 'video.gif']);
-  s.photos.forEach((p, i) => uploads.push([p, `photo-${i + 1}${path.extname(p).toLowerCase()}`]));
-  uploads.push([print, 'print.jpg']);
-  for (const [local, name] of uploads) await nc.uploadFile(local, `${remoteDir}/${name}`);
-
+  const remoteDir = s.remoteDir || `${nc.NC_ROOT}/${s.id}`;
   s.remoteDir = remoteDir;
+  await nc.ensureDir(remoteDir);
+  const existingRemoteNames = new Set(
+    (await nc.list(remoteDir).catch(() => [])).filter((item) => !item.isDir).map((item) => item.name),
+  );
+
+  const uploads = [[s.cardFile, 'card.jpg'], [s.videoFile, 'video.mp4']];
+  if (s.gifFile) uploads.push([s.gifFile, 'video.gif']);
+  s.photos.forEach((p, i) => {
+    if (p) uploads.push([p, `photo-${i + 1}${path.extname(p).toLowerCase()}`]);
+  });
+  uploads.push([s.printFile, 'print.jpg']);
+  s.uploaded = (Array.isArray(s.uploaded) ? s.uploaded : []).filter((name) => existingRemoteNames.has(name));
+  if (s.forceUploadAll) s.uploaded = [];
+  for (const [local, name] of uploads) {
+    if (s.uploaded.includes(name)) continue;
+    await nc.uploadFile(local, `${remoteDir}/${name}`);
+    s.uploaded.push(name);
+    emit({ message: `อัปโหลด ${name} แล้ว` });
+  }
+  s.forceUploadAll = false;
+
   // ต้องเป็น share แยกต่อเซสชัน (root อยู่ที่โฟลเดอร์นี้เอง) ไม่ใช่ subfolder ของ share หลัก
   // ไม่งั้นลูกค้ากดขึ้น breadcrumb แล้วเห็นเซสชันคนอื่นได้ — ห้ามเด็ดขาด จึงไม่ fallback เงียบ ๆ
-  const share = await nc.createSessionShare(remoteDir);
-  s.shareUrl = share.url;
-  s.shareId = share.shareId;
+  if (!s.shareUrl) {
+    const existingShares = await nc.findSessionShares(remoteDir).catch(() => []);
+    const share = existingShares[0] || await nc.createSessionShare(remoteDir);
+    s.shareUrl = share.url;
+    s.shareId = share.shareId;
+  }
   s.qr = await QRCode.toDataURL(s.shareUrl, { width: 640, margin: 1, errorCorrectionLevel: 'M' });
 
   emit({ phase: 'done', message: '' });
@@ -268,7 +402,9 @@ async function finish(reason) {
   if (buffered.length) {
     const next = buffered.splice(0, buffered.length);
     emit({ phase: 'idle', session: null });
-    for (const file of next) await addPhoto(file);
+    queueMicrotask(() => {
+      for (const file of next) addPhoto(file).catch(reportError);
+    });
   }
 }
 
@@ -280,15 +416,22 @@ export function reset() {
 }
 
 export async function finishNow() {
-  if (state.phase !== 'shooting' || !state.session?.photos.length) {
+  if (capturing) throw new Error('กำลังถ่ายอยู่ กรุณารอให้รูปบันทึกเสร็จ');
+  await photoQueue;
+  if (state.phase !== 'shooting' || !filledPhotos(state.session).length) {
     throw new Error('ยังไม่มีช็อตในเซสชันนี้');
   }
+  const missing = state.session.photos
+    .map((photo, i) => photo ? null : i + 1)
+    .filter(Boolean);
+  if (missing.length) throw new Error(`ยังขาดรูปช่องที่ ${missing.join(', ')}`);
   await finish('operator สั่งปิด');
 }
 
 export function discard() {
   if (state.phase === 'processing') throw new Error('กำลังอัปโหลดอยู่ ยกเลิกไม่ได้');
   if (currentCancelToken) currentCancelToken.cancelled = true;
+  if (state.session) saveJournal({ ...state.session, phase: 'discarded', lastError: 'operator discarded' });
   reset();
 }
 
@@ -297,9 +440,16 @@ export async function sendToPrint(copies = 1) {
   if (!s || !s.remoteDir) throw new Error('ยังไม่มีเซสชันที่อัปโหลดเสร็จ');
 
   // เลขคิวคงที่ต่อเซสชัน — สั่งปริ้นซ้ำ (reprint) ใช้เลขเดิม ไม่จองใหม่
-  if (!s.queueNumber) s.queueNumber = await nc.claimQueueNumber();
+  if (!s.queueNumber) {
+    s.queueNumber = await nc.claimQueueNumber();
+    emit({});
+  }
+
+  const printBuffer = await fsp.readFile(s.printFile);
+  const checksumSha256 = createHash('sha256').update(printBuffer).digest('hex');
 
   const job = {
+    jobId: `${s.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     sessionId: s.id,
     queueNumber: s.queueNumber,
     booth: config.boothName,
@@ -308,6 +458,9 @@ export async function sendToPrint(copies = 1) {
     copies: Math.max(1, Math.min(5, Number(copies) || 1)),
     printFile: `${s.remoteDir}/print.jpg`,
     layout: config.printLayout,
+    paper: config.printLayout === 'strip2x6' ? '2x6' : '4x6',
+    checksumSha256,
+    retryCount: 0,
     status: 'queued',
   };
   await nc.ensureDir(`${nc.NC_ROOT}/_print/queue`);
@@ -320,7 +473,10 @@ export async function sendToPrint(copies = 1) {
 }
 
 export async function recoverSession(sessionId, action = 'resume') {
-  const sessionDir = path.join(config.sessionsDir, sessionId);
+  const safeId = path.basename(String(sessionId));
+  if (!safeId || safeId !== sessionId) throw new Error('รหัสเซสชันไม่ถูกต้อง');
+  if (state.phase === 'shooting' || state.phase === 'processing') throw new Error('กำลังมีเซสชันทำงานอยู่');
+  const sessionDir = path.join(config.sessionsDir, safeId);
   const journal = loadJournal(sessionDir);
   if (!journal) throw new Error(`ไม่พบ Journal ของเซสชัน ${sessionId}`);
 
@@ -335,26 +491,44 @@ export async function recoverSession(sessionId, action = 'resume') {
     localDir: sessionDir,
     rawDir: path.join(config.captureDir, journal.id),
     startedAt: journal.startedAt || Date.now(),
-    photos: (journal.photos || []).filter((p) => fsp.access(p).then(() => true).catch(() => false)),
-    previews: journal.previews || [],
+    photos: Array.from({ length: config.shots }, (_, i) => {
+      const file = journal.photos?.[i];
+      return file && filterExistingPaths([file]).length ? file : null;
+    }),
+    previews: Array.from({ length: config.shots }, (_, i) => journal.previews?.[i] || null),
+    cardFile: journal.cardFile || null,
+    printFile: journal.printFile || null,
+    videoFile: journal.videoFile || null,
+    gifFile: journal.gifFile || null,
+    uploaded: journal.uploaded || [],
+    remoteDir: journal.remoteDir || null,
     shareUrl: journal.shareUrl || null,
     shareId: journal.shareId || null,
     qr: null,
     printed: Boolean(journal.printed),
     queueNumber: journal.queueNumber || null,
+    forceUploadAll: Boolean(journal.forceUploadAll),
   };
 
-  emit({ phase: 'shooting', session: s, message: 'กำลังกู้คืนเซสชัน...' });
-  if (s.photos.length > 0) {
-    await finish(`กู้คืนจาก Journal (action=${action})`);
-  } else {
-    emit({ phase: 'idle', session: null, message: 'ไม่มีภาพในเซสชันที่กู้คืน' });
-  }
+  emit({ phase: 'shooting', session: s, message: 'กู้คืนแล้ว — ตรวจรูป ลบ หรือถ่ายช่องที่ต้องการใหม่ได้' });
   return { ok: true, session: s };
+}
+
+/** ปุ่มทดสอบในจอช่าง: โหมด folder ปล่อยไฟล์เข้า watcher, โหมดอื่นเพิ่มภาพปลอมเข้าเซสชัน */
+export async function fakeShot(slotNumber = null) {
+  if (config.captureSource === 'folder') return mockShot();
+  if (state.phase !== 'shooting') throw new Error('ต้องกดเริ่มเซสชันก่อน');
+  return captureSlot(slotNumber);
 }
 
 export { scanUnfinishedSessions };
 
-watcher.on('photo', (file) => { addPhoto(file).catch(reportError); });
+watcher.on('photo', (file) => {
+  if (state.phase !== 'shooting') {
+    console.log('[watch] ข้ามภาพเพราะเจ้าหน้าที่ยังไม่ได้เริ่มเซสชัน', path.basename(file));
+    return;
+  }
+  addPhoto(file).catch(reportError);
+});
 watcher.on('warn', (msg) => console.warn('[watch]', msg));
 watcher.on('raw', (file) => console.log('[watch] ข้าม RAW', path.basename(file)));

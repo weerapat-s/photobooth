@@ -14,12 +14,17 @@ $targets = @(
 
 $desktop = [Environment]::GetFolderPath("Desktop")
 $startMenu = Join-Path ([Environment]::GetFolderPath("Programs")) "Photo Booth"
+$startup = [Environment]::GetFolderPath("Startup")
+$bridgeStartup = Join-Path $startup "Photo Booth Bridge.lnk"
+$watchdogTaskName = "Photo Booth Bridge Watchdog"
 
 if ($Uninstall) {
   foreach ($t in $targets) {
     Remove-Item -LiteralPath (Join-Path $desktop "$($t.Name).lnk") -ErrorAction SilentlyContinue
   }
   Remove-Item -LiteralPath $startMenu -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $bridgeStartup -ErrorAction SilentlyContinue
+  & schtasks.exe /Delete /TN $watchdogTaskName /F 2>$null | Out-Null
   Write-Output "ลบ shortcut แล้ว"
   return
 }
@@ -50,3 +55,19 @@ foreach ($t in $targets) {
     Write-Output "สร้าง $lnkPath"
   }
 }
+
+# เปิด Windows bridge อัตโนมัติหลังล็อกอิน เพื่อให้ iPad เข้าเว็บได้โดยไม่ต้องเปิด terminal
+$bridge = $shell.CreateShortcut($bridgeStartup)
+$bridge.TargetPath = "$env:WINDIR\System32\wscript.exe"
+$bridge.Arguments = "`"$(Join-Path $here 'bridge.vbs')`""
+$bridge.WorkingDirectory = $root
+$bridge.Description = "เปิด Photo Booth backend สำหรับ iPad อัตโนมัติ"
+$bridgeIcon = Join-Path $iconDir "booth.ico"
+if (Test-Path -LiteralPath $bridgeIcon) { $bridge.IconLocation = "$bridgeIcon,0" }
+$bridge.Save()
+Write-Output "สร้าง $bridgeStartup"
+
+# ตรวจทุก 1 นาที ถ้า backend หรือ Cloudflare Tunnel หยุด bridge.vbs จะเปิดกลับโดยกันโปรเซสซ้ำไว้แล้ว
+$watchdogCommand = '"' + "$env:WINDIR\System32\wscript.exe" + '" "' + (Join-Path $here 'bridge.vbs') + '"'
+& schtasks.exe /Create /TN $watchdogTaskName /TR $watchdogCommand /SC MINUTE /MO 1 /F | Out-Null
+if ($LASTEXITCODE -eq 0) { Write-Output "สร้าง Scheduled Task: $watchdogTaskName" }

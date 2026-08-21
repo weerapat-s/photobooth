@@ -33,6 +33,20 @@ export async function getFile(remotePath) {
   return Buffer.from(await res.arrayBuffer());
 }
 
+export async function putText(text, remotePath) {
+  const body = Buffer.from(text, 'utf8');
+  const res = await dav('PUT', remotePath, {
+    body,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Length': String(body.length),
+    },
+  });
+  if (![200, 201, 204].includes(res.status)) {
+    throw new Error(`เขียนไฟล์ ${remotePath} ไม่ได้: HTTP ${res.status}`);
+  }
+}
+
 /** คืน [{name, isDir, size, modified}] */
 export async function list(remotePath) {
   const res = await dav('PROPFIND', remotePath, {

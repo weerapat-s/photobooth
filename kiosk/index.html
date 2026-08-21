@@ -2,25 +2,49 @@
 <html lang="th">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0d0d12">
 <title>Photo Booth</title>
 <link rel="stylesheet" href="style.css">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
 </head>
 <body>
 <div id="app">
 
+  <section class="screen" id="screen-setup" hidden>
+    <div class="setup-card">
+      <div class="setup-mark">PB</div>
+      <h2>เชื่อมต่อ Photo Booth</h2>
+      <p class="sub small">ใส่รหัสเชื่อมต่อเพียงครั้งแรก รหัสจะไม่ถูกเก็บใน JavaScript หรือ URL</p>
+      <input class="setup-input" id="pair-token" type="password" autocomplete="off" placeholder="รหัสเชื่อมต่อ">
+      <button class="big-btn" id="btn-pair">เชื่อมต่อเครื่องนี้</button>
+      <p class="err" id="pair-error"></p>
+    </div>
+  </section>
+
   <section class="screen" id="screen-idle">
     <div class="idle-inner">
       <h1 id="event-title">Photo Booth</h1>
-      <p class="sub" id="idle-sub">แตะที่หน้าจอเพื่อเริ่มถ่าย</p>
-      <button class="big-btn" id="btn-start">เริ่มถ่าย</button>
+      <p class="sub" id="idle-sub">แตะเพื่อเริ่มถ่ายรูป</p>
+      <button class="big-btn" id="btn-start" hidden>เริ่มถ่าย</button>
+      <div class="camera-ready" id="camera-ready" hidden>
+        <span class="camera-dot"></span>
+        <span id="camera-ready-text">กำลังตรวจกล้อง...</span>
+        <button class="mini-btn" id="btn-camera-retry" type="button">ตรวจใหม่</button>
+      </div>
       <p class="hint" id="idle-hint"></p>
+      <p class="install-hint" id="install-hint" hidden>ก่อนเปิดใช้งาน: Safari → แชร์ → เพิ่มไปยังหน้าจอโฮม จากนั้นเปิด Guided Access เพื่อกันการปัดออกและใช้รหัสเจ้าหน้าที่ตอนออก</p>
     </div>
   </section>
 
   <section class="screen" id="screen-shoot" hidden>
     <div class="stage">
-      <img id="liveview" alt="">
+      <video id="liveview" autoplay muted playsinline></video>
+      <canvas id="capture-canvas" hidden></canvas>
       <img id="lastshot" alt="" hidden>
       <div class="flash" id="flash"></div>
       <div class="count" id="count"></div>
@@ -28,6 +52,11 @@
     </div>
     <div class="shotbar" id="shotbar"></div>
     <p class="status" id="shoot-status"></p>
+    <div class="review-actions" id="review-actions" hidden>
+      <button class="big-btn accept-btn" id="btn-accept">ใช้รูปนี้</button>
+      <button class="ghost-btn" id="btn-retake">ถ่ายใหม่</button>
+      <button class="text-btn" id="btn-cancel-session">ยกเลิก</button>
+    </div>
   </section>
 
   <section class="screen" id="screen-processing" hidden>
@@ -45,9 +74,9 @@
       </div>
       <div class="result-box">
         <img id="card" alt="">
-        <div class="actions" id="done-actions">
+        <div class="actions" id="done-actions" hidden>
           <button class="big-btn" id="btn-print">ปริ้นรูป</button>
-          <button class="ghost-btn" id="btn-again">ถ่ายใหม่</button>
+          <button class="ghost-btn" id="btn-again">เสร็จแล้ว</button>
         </div>
         <p class="queue-number" id="queue-number" hidden></p>
         <p class="hint" id="print-status"></p>

@@ -18,6 +18,7 @@ export function saveJournal(sessionData) {
     videoFile: sessionData.videoFile || null,
     gifFile: sessionData.gifFile || null,
     uploaded: sessionData.uploaded || [],
+    forceUploadAll: Boolean(sessionData.forceUploadAll),
     remoteDir: sessionData.remoteDir || null,
     shareId: sessionData.shareId || null,
     shareUrl: sessionData.shareUrl || null,
@@ -45,6 +46,10 @@ export function loadJournal(sessionDir) {
   }
 }
 
+export function filterExistingPaths(paths = []) {
+  return paths.filter((file) => typeof file === 'string' && fs.existsSync(file));
+}
+
 export function scanUnfinishedSessions() {
   const sessionsDir = config.sessionsDir;
   if (!fs.existsSync(sessionsDir)) return [];
@@ -57,8 +62,8 @@ export function scanUnfinishedSessions() {
     const fullPath = path.join(sessionsDir, dir.name);
     const journal = loadJournal(fullPath);
 
-    if (journal && journal.phase !== 'done') {
-      const photosExist = (journal.photos || []).filter((p) => fs.existsSync(p));
+    if (journal && !['done', 'discarded'].includes(journal.phase)) {
+      const photosExist = filterExistingPaths(journal.photos);
       unfinished.push({
         ...journal,
         localDir: fullPath,

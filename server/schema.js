@@ -22,8 +22,8 @@ export function validateConfigPatch(patch) {
       }
       case 'COUNTDOWN': {
         const num = Number(val);
-        if (!Number.isInteger(num) || num < 1 || num > 30) {
-          errors.push(`COUNTDOWN ต้องเป็นจำนวนเต็มระหว่าง 1 ถึง 30 (ได้รับ: ${val})`);
+        if (!Number.isInteger(num) || num < 0 || num > 30) {
+          errors.push(`COUNTDOWN ต้องเป็นจำนวนเต็มระหว่าง 0 ถึง 30 (ได้รับ: ${val})`);
         }
         break;
       }
@@ -58,14 +58,38 @@ export function validateConfigPatch(patch) {
         break;
       }
       case 'CAPTURE_SOURCE': {
-        if (!['digicam', 'folder', 'mock'].includes(strVal)) {
-          errors.push(`CAPTURE_SOURCE ต้องเป็น 'digicam', 'folder' หรือ 'mock' (ได้รับ: ${val})`);
+        if (!['digicam', 'folder', 'mock', 'ipad', 'web'].includes(strVal)) {
+          errors.push(`CAPTURE_SOURCE ต้องเป็น 'digicam', 'folder', 'mock', 'ipad' หรือ 'web' (ได้รับ: ${val})`);
+        }
+        break;
+      }
+      case 'WEB_CAMERA_FACING': {
+        if (!['user', 'environment'].includes(strVal)) {
+          errors.push(`WEB_CAMERA_FACING ต้องเป็น 'user' หรือ 'environment' (ได้รับ: ${val})`);
+        }
+        break;
+      }
+      case 'WEB_MIRROR': {
+        if (!['true', 'false'].includes(strVal.toLowerCase())) {
+          errors.push(`WEB_MIRROR ต้องเป็น true หรือ false (ได้รับ: ${val})`);
+        }
+        break;
+      }
+      case 'KIOSK_MODE': {
+        if (!['operator', 'self_service'].includes(strVal)) {
+          errors.push(`KIOSK_MODE ต้องเป็น 'operator' หรือ 'self_service' (ได้รับ: ${val})`);
         }
         break;
       }
       case 'DCC_TRANSPORT': {
         if (!['auto', 'webserver', 'remotecmd'].includes(strVal)) {
           errors.push(`DCC_TRANSPORT ต้องเป็น 'auto', 'webserver' หรือ 'remotecmd' (ได้รับ: ${val})`);
+        }
+        break;
+      }
+      case 'PRINT_ON_DONE': {
+        if (!['true', 'false'].includes(strVal.toLowerCase())) {
+          errors.push(`PRINT_ON_DONE ต้องเป็น true หรือ false (ได้รับ: ${val})`);
         }
         break;
       }
@@ -94,7 +118,11 @@ export function saveEnvAtomic(envFilePath, patch) {
 
   let text = fs.existsSync(envFilePath) ? fs.readFileSync(envFilePath, 'utf8') : '';
   for (const [key, value] of Object.entries(patch)) {
-    const line = `${key}=${value}`;
+    const raw = String(value);
+    const serialized = /^-?\d+(\.\d+)?$/.test(raw) || /^(true|false)$/i.test(raw)
+      ? raw
+      : JSON.stringify(raw);
+    const line = `${key}=${serialized}`;
     const re = new RegExp(`^\\s*${key}\\s*=.*$`, 'm');
     text = re.test(text) ? text.replace(re, line) : `${text.replace(/\s*$/, '')}\n${line}\n`;
     process.env[key] = String(value);

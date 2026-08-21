@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert';
-import { saveJournal, loadJournal, scanUnfinishedSessions } from '../server/journal.js';
+import { saveJournal, loadJournal, scanUnfinishedSessions, filterExistingPaths } from '../server/journal.js';
 import { config } from '../server/config.js';
 
 async function runRecoveryTest() {
@@ -20,6 +20,7 @@ async function runRecoveryTest() {
     previews: ['preview-1.jpg'],
     startedAt: Date.now(),
   };
+  fs.writeFileSync(mockJournalData.photos[0], 'test');
 
   // 1. Test atomic journal saving
   saveJournal(mockJournalData);
@@ -36,6 +37,7 @@ async function runRecoveryTest() {
   // 3. Test scanning unfinished sessions
   const unfinishedList = scanUnfinishedSessions();
   assert(unfinishedList.some((s) => s.id === testSessionId), 'Unfinished scan must detect test-session-crash-123');
+  assert.deepStrictEqual(filterExistingPaths([mockJournalData.photos[0], path.join(sessionDir, 'missing.jpg')]), [mockJournalData.photos[0]]);
   console.log('Unfinished session scan passed.');
 
   // Cleanup

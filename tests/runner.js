@@ -5,10 +5,16 @@ const execFileAsync = promisify(execFile);
 
 const testFiles = [
   'tests/baseline.spec.js',
+  'tests/startup.spec.js',
   'tests/security.spec.js',
   'tests/validation.spec.js',
+  'tests/camera-guard.spec.js',
   'tests/recovery.spec.js',
   'tests/printqueue.spec.js',
+  'tests/printbooth-flow.spec.js',
+  'tests/ipad-flow.spec.js',
+  'tests/web-flow.spec.js',
+  'tests/public-kiosk.spec.js',
   'tests/preflight.spec.js',
   'tests/retention.spec.js',
 ];
@@ -46,7 +52,7 @@ async function runAllTests() {
     console.error('\nSOME TESTS FAILED! PLEASE REVIEW ERRORS ABOVE.');
     process.exit(1);
   } else {
-    console.log('\nALL VERIFICATION TESTS PASSED SUCCESSFULLY! PROCEED TO PRODUCTION.');
+    console.log('\nALL AUTOMATED VERIFICATION TESTS PASSED. DSLR AND REAL-PRINTER ACCEPTANCE IS STILL REQUIRED.');
   }
 }
 

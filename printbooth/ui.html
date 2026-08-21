@@ -28,7 +28,7 @@
 <body>
 <h1>บูทปริ้น <span id="printer-id"></span></h1>
 <div class="meta" id="meta"></div>
-<div class="btns" style="margin-bottom:18px"><a href="/queue.html" target="_blank"><button class="ghost">เปิดจอบอร์ดคิว</button></a></div>
+<div class="btns" style="margin-bottom:18px"><a id="board-link" href="http://localhost:4702/queue.html" target="_blank"><button class="ghost">เปิดจอบอร์ดคิว</button></a></div>
 
 <div class="grid">
   <div class="card">
@@ -52,6 +52,11 @@
     <h2>ประวัติเครื่องนี้</h2>
     <div id="hist"></div>
   </div>
+
+  <div class="card">
+    <h2>งานที่ต้องให้ช่างตรวจ</h2>
+    <div id="problems"></div>
+  </div>
 </div>
 
 <script>
@@ -60,6 +65,7 @@ let myId = '';
 async function refresh() {
   const s = await (await fetch('/api/status')).json();
   myId = s.printerId;
+  document.getElementById('board-link').href = 'http://localhost:' + s.boardPort + '/queue.html';
   document.getElementById('printer-id').textContent = s.printerId;
   document.getElementById('meta').innerHTML =
     'เครื่องพิมพ์: <b>' + s.printer + '</b> · กระดาษ ' + s.paper + ' · auto ' + s.auto +
@@ -87,12 +93,34 @@ async function refresh() {
     return '<div class="row"><span class="tag' + mine + '">' + c.owner + '</span><span>' + q +
       (c.since ? new Date(c.since).toLocaleTimeString('th-TH') : '-') + '</span></div>';
   }).join('') || '<div class="row"><span>ไม่มีงานถูกจองอยู่</span></div>';
+
+  const problems = await (await fetch('/api/problems')).json();
+  document.getElementById('problems').innerHTML = problems.map(function (p) {
+    const encoded = encodeURIComponent(p.name);
+    const q = p.queueNumber ? '#' + p.queueNumber : p.name;
+    const resolve = p.bucket === 'review'
+      ? '<button class="ghost" onclick="resolveProblem(\'' + encoded + '\')">ยืนยันว่าพิมพ์แล้ว</button>'
+      : '';
+    return '<div class="row"><span><span class="warn">' + p.bucket + '</span> ' + q + '</span><span class="btns">' +
+      '<button onclick="retryProblem(\'' + p.bucket + '\',\'' + encoded + '\')">ลองใหม่</button>' + resolve + '</span></div>';
+  }).join('') || '<div class="row"><span class="ok">ไม่มีงานค้างตรวจ</span></div>';
 }
 
 async function poll() { await fetch('/api/poll', { method: 'POST' }); refresh(); }
 async function requeue() {
   const r = await (await fetch('/api/requeue-stale', { method: 'POST' })).json();
   alert(r.ok ? 'คืนเข้าคิว ' + r.requeued + ' งาน' : r.error);
+  refresh();
+}
+async function retryProblem(bucket, encodedName) {
+  const r = await (await fetch('/api/retry/' + bucket + '/' + encodedName, { method: 'POST' })).json();
+  if (!r.ok) alert(r.error || 'ย้ายงานกลับคิวไม่ได้');
+  refresh();
+}
+async function resolveProblem(encodedName) {
+  if (!confirm('ยืนยันว่ารูปใบนี้พิมพ์ออกแล้วจริง?')) return;
+  const r = await (await fetch('/api/resolve/' + encodedName, { method: 'POST' })).json();
+  if (!r.ok) alert(r.error || 'ยืนยันงานไม่ได้');
   refresh();
 }
 refresh();

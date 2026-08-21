@@ -22,6 +22,7 @@ export const config = {
   pollMs: num(process.env.POLL_SECONDS, 5) * 1000,
   dryRun: bool(process.env.DRY_RUN, false),
   maxCopies: num(process.env.MAX_COPIES, 5),
+  maxDownloadRetries: num(process.env.MAX_DOWNLOAD_RETRIES, 3),
   // รับงานเฉพาะบูทที่ระบุ (เว้นว่าง = รับทุกบูท) เช่น "booth-1,booth-2"
   acceptBooths: list(process.env.ACCEPT_BOOTHS),
   // งานที่จองไว้แล้วค้างเกินกี่นาที ถือว่าเครื่องนั้นตาย เอากลับเข้าคิว

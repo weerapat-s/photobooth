@@ -71,7 +71,7 @@ export async function getFile(remotePath) {
 export async function list(remotePath) {
   const res = await dav('PROPFIND', remotePath, {
     headers: { Depth: '1', 'Content-Type': 'application/xml' },
-    body: '<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getcontentlength/><d:resourcetype/></d:prop></d:propfind>',
+    body: '<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getcontentlength/><d:getlastmodified/><d:resourcetype/></d:prop></d:propfind>',
     timeout: 30000,
   });
   if (res.status === 404) return [];
@@ -86,7 +86,8 @@ export async function list(remotePath) {
     if (!href || href.replace(/\/$/, '') === self) continue;
     const isDir = /<d:collection\s*\/>/.test(block);
     const size = Number((block.match(/<d:getcontentlength>(\d+)<\/d:getcontentlength>/) || [])[1] || 0);
-    out.push({ name: path.posix.basename(href.replace(/\/$/, '')), isDir, size, href });
+    const modified = (block.match(/<d:getlastmodified>([^<]*)<\/d:getlastmodified>/) || [])[1] || null;
+    out.push({ name: path.posix.basename(href.replace(/\/$/, '')), isDir, size, modified, href });
   }
   return out;
 }
@@ -153,11 +154,29 @@ export async function createSessionShare(remoteDir) {
 
 export async function deleteShare(shareId) {
   if (!hasOwnerCredentials()) return;
-  await fetch(`${nc.base}/ocs/v2.php/apps/files_sharing/api/v1/shares/${shareId}?format=json`, {
+  const res = await fetch(`${nc.base}/ocs/v2.php/apps/files_sharing/api/v1/shares/${shareId}?format=json`, {
     method: 'DELETE',
     headers: { Authorization: ocsAuth(), 'OCS-APIRequest': 'true' },
     signal: AbortSignal.timeout(15000),
-  }).catch(() => {});
+  });
+  const json = await res.json().catch(() => null);
+  if (!res.ok || json?.ocs?.meta?.statuscode >= 300) {
+    throw new Error(`ลบลิงก์ share ${shareId} ไม่ได้: ${json?.ocs?.meta?.message || `HTTP ${res.status}`}`);
+  }
+}
+
+export async function findSessionShares(remoteDir) {
+  if (!hasOwnerCredentials()) return [];
+  const ownerPath = [nc.ownerPrefix, clean(remoteDir)].filter(Boolean).join('/');
+  const query = new URLSearchParams({ path: ownerPath, reshares: 'true', format: 'json' });
+  const res = await fetch(`${nc.base}/ocs/v2.php/apps/files_sharing/api/v1/shares?${query}`, {
+    headers: { Authorization: ocsAuth(), 'OCS-APIRequest': 'true' },
+    signal: AbortSignal.timeout(15000),
+  });
+  const json = await res.json().catch(() => null);
+  if (!res.ok || json?.ocs?.meta?.statuscode >= 300) return [];
+  const data = Array.isArray(json?.ocs?.data) ? json.ocs.data : [];
+  return data.map((share) => ({ shareId: String(share.id), url: share.url || null }));
 }
 
 /** ลิงก์ดาวน์โหลดไฟล์เดี่ยวตรง ๆ */

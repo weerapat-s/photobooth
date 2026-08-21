@@ -1,5 +1,6 @@
 import assert from 'node:assert';
 import { paths } from '../printbooth/config.js';
+import * as nc from '../printbooth/nextcloud.js';
 
 async function runPrintQueueTest() {
   console.log('--- STARTING PHASE 4 PRINT QUEUE TEST ---');
@@ -10,6 +11,7 @@ async function runPrintQueueTest() {
   assert(paths.done.endsWith('/_print/done'), 'done path must match schema');
   assert(paths.failed.endsWith('/_print/failed'), 'failed path must match schema');
   assert(paths.review.endsWith('/_print/review'), 'review path must match schema');
+  assert.strictEqual(typeof nc.putText, 'function', 'printbooth must be able to persist printing status');
   console.log('Print queue path assertions passed.');
 
   console.log('--- PHASE 4 PRINT QUEUE TEST PASSED SUCCESSFULLY ---');

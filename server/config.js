@@ -17,17 +17,26 @@ export const config = {
   sessionIdleSeconds: num(process.env.SESSION_IDLE_SECONDS, 25),
   boothName: process.env.BOOTH_NAME || 'booth-1',
   eventName: process.env.EVENT_NAME || 'Photo Booth',
+  kioskMode: process.env.KIOSK_MODE || 'operator',
   printOnDone: bool(process.env.PRINT_ON_DONE, false),
+  requirePreflight: bool(process.env.REQUIRE_PREFLIGHT, false),
+  preflightMaxAgeMinutes: num(process.env.PREFLIGHT_MAX_AGE_MINUTES, 60),
 
   // แหล่งภาพ: folder = เฝ้าโฟลเดอร์ Capture ของ Capture One | mock = สร้างภาพปลอมไว้เทสต์
   // digicam = แอปคุมกล้องผ่าน digiCamControl (มี live view) | folder = เฝ้าโฟลเดอร์ Capture One | mock = เทสต์
   captureSource: process.env.CAPTURE_SOURCE || 'digicam',
+  ipadApiToken: process.env.IPAD_API_TOKEN || '',
+  webPairCode: process.env.WEB_PAIR_CODE || '',
+  webCameraFacing: process.env.WEB_CAMERA_FACING || 'user',
+  webMirror: bool(process.env.WEB_MIRROR, true),
   watchDir: process.env.WATCH_DIR || '',
   watchPolling: bool(process.env.WATCH_POLLING, false),
 
   countdown: num(process.env.COUNTDOWN, 3),
   shotGapSeconds: num(process.env.SHOT_GAP_SECONDS, 1.5),
-  dccTransport: process.env.DCC_TRANSPORT || 'auto', // auto (ลอง webserver ก่อน) | webserver | remotecmd
+  // remotecmd เสถียรกว่า webserver ของ digiCamControl 2.1.7 ซึ่งอาจล้มเมื่อ client ตัด socket
+  dccTransport: process.env.DCC_TRANSPORT || 'remotecmd',
+  dccAutoStart: bool(process.env.DCC_AUTO_START, true),
   dccHost: (process.env.DCC_HOST || 'http://localhost:5513').replace(/\/$/, ''),
   dccPath: process.env.DCC_PATH || String.raw`C:\Program Files (x86)\digiCamControl`,
   captureDir: process.env.CAPTURE_DIR || String.raw`C:\photobooth-captures`,
@@ -68,6 +77,28 @@ fs.mkdirSync(config.sessionsDir, { recursive: true });
 
 import { saveEnvAtomic, validateConfigPatch } from './schema.js';
 
+const runtimeCheck = validateConfigPatch({
+  PORT: config.port,
+  SHOTS: config.shots,
+  PRINT_SHOTS: config.printShots,
+  COUNTDOWN: config.countdown,
+  SESSION_IDLE_SECONDS: config.sessionIdleSeconds,
+  REVIEW_SECONDS: config.reviewSeconds,
+  PRINT_LAYOUT: config.printLayout,
+  CAPTURE_SOURCE: config.captureSource,
+  KIOSK_MODE: config.kioskMode,
+  WEB_CAMERA_FACING: config.webCameraFacing,
+  WEB_MIRROR: config.webMirror,
+  DCC_TRANSPORT: config.dccTransport,
+  PRINT_THEME_COLOR: config.printThemeColor,
+  PRINT_FRAME_COLOR: config.printFrameColor,
+  GRID_BG_COLOR: config.gridBgColor,
+  GRID_ACCENT_COLOR: config.gridAccentColor,
+});
+if (!runtimeCheck.ok) {
+  throw new Error(`การตั้งค่าเริ่มต้นไม่ถูกต้อง:\n- ${runtimeCheck.errors.join('\n- ')}`);
+}
+
 /** เขียนค่ากลับลง .env (ใช้จากหน้าตั้งค่าของ operator) แล้วอัปเดตค่าใน memory ให้ด้วย */
 export function saveEnv(patch) {
   saveEnvAtomic(config.envFile, patch);
@@ -75,6 +106,7 @@ export function saveEnv(patch) {
   if ('WATCH_DIR' in patch) config.watchDir = String(patch.WATCH_DIR);
   if ('SHOTS' in patch) config.shots = Number(patch.SHOTS);
   if ('EVENT_NAME' in patch) config.eventName = String(patch.EVENT_NAME);
+  if ('KIOSK_MODE' in patch) config.kioskMode = String(patch.KIOSK_MODE);
   if ('SESSION_IDLE_SECONDS' in patch) config.sessionIdleSeconds = Number(patch.SESSION_IDLE_SECONDS);
   if ('PRINT_ON_DONE' in patch) config.printOnDone = String(patch.PRINT_ON_DONE).toLowerCase() === 'true';
   if ('PRINT_LAYOUT' in patch) config.printLayout = String(patch.PRINT_LAYOUT);
@@ -84,5 +116,7 @@ export function saveEnv(patch) {
   if ('GRID_BG_COLOR' in patch) config.gridBgColor = String(patch.GRID_BG_COLOR);
   if ('GRID_ACCENT_COLOR' in patch) config.gridAccentColor = String(patch.GRID_ACCENT_COLOR);
   if ('CAPTURE_SOURCE' in patch) config.captureSource = String(patch.CAPTURE_SOURCE);
+  if ('WEB_CAMERA_FACING' in patch) config.webCameraFacing = String(patch.WEB_CAMERA_FACING);
+  if ('WEB_MIRROR' in patch) config.webMirror = String(patch.WEB_MIRROR).toLowerCase() === 'true';
   if ('COUNTDOWN' in patch) config.countdown = Number(patch.COUNTDOWN);
 }

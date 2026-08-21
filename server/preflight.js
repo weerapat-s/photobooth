@@ -7,15 +7,19 @@ import { config } from './config.js';
 import { camera } from './camera.js';
 import * as nc from './nextcloud.js';
 import { validateConfigPatch } from './schema.js';
+import { diskStatus } from './retention.js';
 
 const execFileAsync = promisify(execFile);
 
-export async function runPreflightChecks() {
+export async function runPreflightChecks({ deep = false, skipExternal = false } = {}) {
   const checks = [];
   let status = 'READY';
+  let cloudReady = false;
 
   // 1. Camera check
-  if (config.captureSource === 'digicam') {
+  if (skipExternal) {
+    checks.push({ name: 'Camera Connection', pass: true, detail: 'ข้ามในการทดสอบอัตโนมัติ' });
+  } else if (config.captureSource === 'digicam') {
     try {
       const camStatus = await camera.status();
       if (!camStatus.ok) {
@@ -23,6 +27,10 @@ export async function runPreflightChecks() {
         status = 'BLOCKED';
       } else {
         checks.push({ name: 'Camera Connection', pass: true, detail: `กล้องที่พบ: ${camStatus.cameras?.length || 1}` });
+        if (camStatus.liveView === false) {
+          checks.push({ name: 'Live View', pass: false, error: 'ถ่ายได้แต่ live view ไม่พร้อม', critical: false });
+          status = 'READY_WITH_WARNINGS';
+        }
       }
     } catch (err) {
       checks.push({ name: 'Camera Connection', pass: false, error: err.message, critical: true });
@@ -30,6 +38,18 @@ export async function runPreflightChecks() {
     }
   } else {
     checks.push({ name: 'Camera Connection', pass: true, detail: `แหล่งภาพ: ${config.captureSource}` });
+  }
+
+  if (config.captureSource === 'ipad' || config.captureSource === 'web') {
+    const tokenReady = config.ipadApiToken.length >= 32;
+    checks.push({
+      name: config.captureSource === 'web' ? 'Web Kiosk Pairing Token' : 'iPad API Token',
+      pass: tokenReady,
+      detail: tokenReady ? (config.captureSource === 'web' ? 'พร้อมจับคู่ PWA และรับภาพจากเบราว์เซอร์' : 'พร้อมรับภาพจากแอป iPad') : undefined,
+      error: tokenReady ? undefined : 'IPAD_API_TOKEN ต้องยาวอย่างน้อย 32 ตัวอักษร',
+      critical: true,
+    });
+    if (!tokenReady) status = 'BLOCKED';
   }
 
   // 2. ffmpeg check
@@ -60,16 +80,77 @@ export async function runPreflightChecks() {
 
   // 4. Nextcloud WebDAV Check
   try {
-    const cloud = await nc.health();
+    const cloud = skipExternal ? { ok: true, skipped: true } : await nc.health();
     if (cloud.ok) {
-      checks.push({ name: 'Nextcloud WebDAV', pass: true, detail: config.nc.base });
+      cloudReady = true;
+      checks.push({ name: 'Nextcloud WebDAV', pass: true, detail: cloud.skipped ? 'ข้ามในการทดสอบอัตโนมัติ' : config.nc.base });
     } else {
-      checks.push({ name: 'Nextcloud WebDAV', pass: false, error: `HTTP ${cloud.status || cloud.error}`, critical: false });
-      if (status !== 'BLOCKED') status = 'READY_WITH_WARNINGS';
+      checks.push({ name: 'Nextcloud WebDAV', pass: false, error: `HTTP ${cloud.status || cloud.error}`, critical: true });
+      status = 'BLOCKED';
     }
   } catch (err) {
-    checks.push({ name: 'Nextcloud WebDAV', pass: false, error: err.message, critical: false });
-    if (status !== 'BLOCKED') status = 'READY_WITH_WARNINGS';
+    checks.push({ name: 'Nextcloud WebDAV', pass: false, error: err.message, critical: true });
+    status = 'BLOCKED';
+  }
+
+  if (!nc.hasOwnerCredentials()) {
+    checks.push({ name: 'Per-session Share', pass: false, error: 'ยังไม่ได้ตั้ง NC_USER/NC_APP_PASSWORD', critical: true });
+    status = 'BLOCKED';
+  } else {
+    checks.push({ name: 'Per-session Share', pass: true, detail: 'มีบัญชีสำหรับสร้างลิงก์แยก' });
+  }
+
+  if (deep && !skipExternal && cloudReady && nc.hasOwnerCredentials()) {
+    const testDir = `${nc.NC_ROOT}/_preflight/${Date.now()}`;
+    let shareId = null;
+    try {
+      await nc.ensureDir(testDir);
+      await nc.putText('photobooth preflight', `${testDir}/write-test.txt`);
+      const share = await nc.createSessionShare(testDir);
+      shareId = share.shareId;
+      checks.push({ name: 'Nextcloud Write + Share', pass: true, detail: 'สร้างไฟล์และลิงก์ทดสอบสำเร็จ' });
+    } catch (err) {
+      checks.push({ name: 'Nextcloud Write + Share', pass: false, error: err.message, critical: true });
+      status = 'BLOCKED';
+    } finally {
+      if (shareId) {
+        await nc.deleteShare(shareId).catch((err) => {
+          checks.push({ name: 'Preflight Cleanup', pass: false, error: err.message, critical: true });
+          status = 'BLOCKED';
+        });
+      }
+      await nc.remove(testDir).catch(() => {});
+    }
+  }
+
+  const disk = await diskStatus();
+  checks.push({
+    name: 'Disk Space',
+    pass: disk.ok,
+    detail: disk.freeGb === null ? undefined : `เหลือ ${disk.freeGb.toFixed(1)} GB`,
+    error: disk.ok ? undefined : (disk.error || `เหลือน้อยกว่า ${disk.minFreeDiskGb} GB`),
+    critical: true,
+  });
+  if (!disk.ok) status = 'BLOCKED';
+
+  const expectedPaper = config.printLayout === 'strip2x6' ? '2x6' : '4x6';
+  const configuredPaper = process.env.PAPER || expectedPaper;
+  if (configuredPaper !== expectedPaper) {
+    checks.push({ name: 'Layout / Paper', pass: false, error: `${config.printLayout} ต้องใช้ PAPER=${expectedPaper} แต่ตั้งไว้ ${configuredPaper}`, critical: true });
+    status = 'BLOCKED';
+  } else {
+    checks.push({ name: 'Layout / Paper', pass: true, detail: `${config.printLayout} → ${configuredPaper}` });
+  }
+
+  if (!skipExternal && process.env.PRINTER_NAME) {
+    try {
+      const script = '$name=$args[0]; if (-not (Get-Printer -Name $name -ErrorAction SilentlyContinue)) { exit 2 }';
+      await execFileAsync('powershell.exe', ['-NoProfile', '-Command', script, process.env.PRINTER_NAME], { timeout: 10000, windowsHide: true });
+      checks.push({ name: 'Windows Printer', pass: true, detail: process.env.PRINTER_NAME });
+    } catch {
+      checks.push({ name: 'Windows Printer', pass: false, error: `ไม่พบเครื่องพิมพ์ ${process.env.PRINTER_NAME}`, critical: true });
+      status = 'BLOCKED';
+    }
   }
 
   // 5. Config validation check
@@ -77,6 +158,8 @@ export async function runPreflightChecks() {
     SHOTS: config.shots,
     COUNTDOWN: config.countdown,
     PRINT_LAYOUT: config.printLayout,
+    CAPTURE_SOURCE: config.captureSource,
+    KIOSK_MODE: config.kioskMode,
   });
   if (!cfgCheck.ok) {
     checks.push({ name: 'Configuration Integrity', pass: false, error: cfgCheck.errors.join(', '), critical: true });

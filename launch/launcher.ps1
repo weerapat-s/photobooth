@@ -1,5 +1,5 @@
 ﻿param(
-  [ValidateSet("booth", "operator", "print")][string]$Mode = "booth"
+  [ValidateSet("booth", "operator", "print", "bridge")][string]$Mode = "booth"
 )
 
 $ErrorActionPreference = "Stop"
@@ -21,9 +21,11 @@ function Get-EnvValue([string]$key, [string]$fallback) {
 }
 
 $page = ""
+$headless = $false
 if ($Mode -eq "booth") {
   $script = Join-Path $root "server\index.js"
   $port = [int](Get-EnvValue "PORT" "4700")
+  $boothMonitor = [int](Get-EnvValue "BOOTH_MONITOR" "2")
   $title = "Photo Booth"
   $kiosk = $true
 }
@@ -34,11 +36,18 @@ elseif ($Mode -eq "operator") {
   $kiosk = $false
   $page = "/operator.html"
 }
-else {
+elseif ($Mode -eq "print") {
   $script = Join-Path $root "printbooth\index.js"
   $port = [int](Get-EnvValue "PRINT_PORT" "4701")
   $title = "บูทปริ้น"
   $kiosk = $false
+}
+else {
+  $script = Join-Path $root "server\index.js"
+  $port = [int](Get-EnvValue "PORT" "4700")
+  $title = "Photo Booth Bridge"
+  $kiosk = $false
+  $headless = $true
 }
 
 $logDir = Join-Path $root "logs"
@@ -98,6 +107,9 @@ if (-not (Test-Port $port)) {
   }
 }
 
+# โหมด bridge ใช้เปิด backend ตอนล็อกอิน Windows โดยไม่เปิดหน้าต่างบนจอ
+if ($headless) { exit 0 }
+
 # หาเบราว์เซอร์ที่เปิดแบบ app window ได้
 $browsers = @(
   "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
@@ -110,18 +122,78 @@ $browser = $browsers | Where-Object { Test-Path -LiteralPath $_ } | Select-Objec
 
 $url = "http://localhost:$port$page"
 $profileDir = Join-Path $env:LOCALAPPDATA "photobooth-kiosk\$Mode"
+$windowProcess = $null
 
 if ($browser) {
   $args = @(
     "--app=$url",
+    "--new-window",
     "--user-data-dir=`"$profileDir`"",
     "--no-first-run",
     "--no-default-browser-check",
     "--disable-features=Translate,TranslateUI",
     "--autoplay-policy=no-user-gesture-required"
   )
-  if ($kiosk) { $args += @("--start-fullscreen", "--kiosk") }
-  Start-Process -FilePath $browser -ArgumentList $args -Wait
+  if ($kiosk) {
+    # Chromium เลือกจอจากตำแหน่งหน้าต่างก่อนเข้าสู่ kiosk mode
+    # BOOTH_MONITOR นับจาก 1; ถ้าหาจอที่ระบุไม่เจอจะใช้จอหลักอย่างปลอดภัย
+    Add-Type -AssemblyName System.Windows.Forms
+    $screens = @([System.Windows.Forms.Screen]::AllScreens)
+    $screenIndex = $boothMonitor - 1
+    if ($screenIndex -lt 0 -or $screenIndex -ge $screens.Count) {
+      $targetScreen = [System.Windows.Forms.Screen]::PrimaryScreen
+    }
+    else {
+      $targetScreen = $screens[$screenIndex]
+    }
+    $bounds = $targetScreen.Bounds
+    $args += @(
+      "--window-position=$($bounds.X),$($bounds.Y)",
+      "--window-size=$($bounds.Width),$($bounds.Height)",
+      "--start-fullscreen",
+      "--kiosk"
+    )
+  }
+  $browserProc = Start-Process -FilePath $browser -ArgumentList $args -PassThru
+
+  if ($kiosk) {
+    # Edge บางรุ่นไม่ทำตาม --window-position เมื่อใช้ --kiosk จึงย้าย native window ซ้ำหลังเปิด
+    Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class PhotoboothWindowNative {
+  [DllImport("user32.dll", SetLastError=true)]
+  public static extern bool SetWindowPos(
+    IntPtr hWnd, IntPtr hWndInsertAfter,
+    int X, int Y, int cx, int cy, uint uFlags);
+}
+"@
+
+    $profilePattern = "*photobooth-kiosk\booth*"
+    foreach ($i in 1..50) {
+      Start-Sleep -Milliseconds 200
+      $candidateIds = @(Get-CimInstance Win32_Process -Filter "name='msedge.exe' or name='chrome.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -like $profilePattern } |
+        Select-Object -ExpandProperty ProcessId)
+
+      foreach ($candidateId in $candidateIds) {
+        $candidate = Get-Process -Id $candidateId -ErrorAction SilentlyContinue
+        if ($candidate -and $candidate.MainWindowHandle -ne 0) {
+          $moved = [PhotoboothWindowNative]::SetWindowPos(
+            $candidate.MainWindowHandle, [IntPtr]::Zero,
+            $bounds.X, $bounds.Y, $bounds.Width, $bounds.Height, 0x0040)
+          if ($moved) {
+            $windowProcess = $candidate
+            break
+          }
+        }
+      }
+      if ($windowProcess) { break }
+    }
+  }
+
+  if (-not $windowProcess) { $windowProcess = $browserProc }
+  Wait-Process -Id $windowProcess.Id -ErrorAction SilentlyContinue
 }
 else {
   Start-Process $url

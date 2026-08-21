@@ -1,0 +1,22 @@
+{
+  "name": "Photo Booth",
+  "short_name": "Photo Booth",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "landscape",
+  "background_color": "#0d0d12",
+  "theme_color": "#0d0d12",
+  "description": "Photo Booth แบบบริการตัวเองสำหรับ iPad",
+  "categories": ["photo", "entertainment"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -103,16 +103,14 @@ async function runBaselineTest() {
           stripRes.print,
           '-Paper',
           '4x6',
-          '-PrinterName',
-          'MockPrinter',
           '-DryRun',
         ],
         { timeout: 15000 }
       );
-      assert(stdout.includes('DRY-RUN'), 'Powershell print script dry run output must include DRY-RUN');
+      assert(stdout.toLowerCase().includes('dry-run'), 'Powershell print script dry run output must include dry-run');
       console.log('Print PowerShell script dry-run passed.');
     } catch (err) {
-      console.warn('PowerShell print dry-run warning (non-fatal):', err.message);
+      throw new Error(`PowerShell print dry-run failed: ${err.message}`);
     }
   }
 
