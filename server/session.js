@@ -1,12 +1,11 @@
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
-import { createHash } from 'node:crypto';
 import QRCode from 'qrcode';
 import { config } from './config.js';
 import { camera } from './camera.js';
 import { watcher, mockShot } from './watcher.js';
-import { composePrint, makePreview } from './compose.js';
+import { composeCard, makePreview } from './compose.js';
 import { makeVideoFromFrames } from './video.js';
 import * as nc from './nextcloud.js';
 import { saveJournal, loadJournal, scanUnfinishedSessions, filterExistingPaths } from './journal.js';
@@ -82,8 +81,6 @@ export function snapshot(extra = {}) {
       activePreview: state.shot > 0 ? slots[state.shot - 1]?.preview || null : null,
       shareUrl: s.shareUrl || null,
       qr: s.qr || null,
-      printed: Boolean(s.printed),
-      queueNumber: s.queueNumber || null,
       startedAt: s.startedAt,
     },
     ...extra,
@@ -120,7 +117,6 @@ function newSession() {
     previews: [],
     shareUrl: null,
     qr: null,
-    printed: false,
   };
 }
 
@@ -158,7 +154,7 @@ async function removeSupersededFiles(s, photo, preview, replacementPhoto = null)
 }
 
 async function invalidateGeneratedOutputs(s) {
-  for (const key of ['cardFile', 'printFile', 'videoFile', 'gifFile']) {
+  for (const key of ['cardFile', 'videoFile', 'gifFile']) {
     const file = s[key];
     if (file && path.resolve(file).startsWith(`${path.resolve(s.localDir)}${path.sep}`)) {
       await fsp.unlink(file).catch(() => {});
@@ -333,17 +329,14 @@ async function finish(reason) {
   emit({ phase: 'processing', message: 'กำลังจัดหน้าและทำวิดีโอ...', countdown: 0 });
   console.log(`[session] ปิดเซสชัน ${s.id} (${reason}) — ${validPhotos.length} ช็อต`);
 
-  // การ์ด/ชีทปริ้นใช้แค่ช็อตล่าสุด N ภาพ (PRINT_SHOTS) ไม่ใช่ทุกช็อตที่ถ่าย — วิดีโอด้านล่างยังใช้ครบทุกช็อต
-  const generatedFilesExist = s.printFile && s.cardFile
-    && filterExistingPaths([s.printFile, s.cardFile]).length === 2;
-  if (!generatedFilesExist) {
-    const printPhotos = validPhotos.slice(-config.printShots);
-    const { print, card } = await composePrint(printPhotos, s.localDir, {
+  // การ์ดใช้แค่ช็อตล่าสุด N ภาพ (PRINT_SHOTS) ไม่ใช่ทุกช็อตที่ถ่าย — วิดีโอด้านล่างยังใช้ครบทุกช็อต
+  if (!s.cardFile || !filterExistingPaths([s.cardFile]).length) {
+    const cardPhotos = validPhotos.slice(-config.printShots);
+    const { card } = await composeCard(cardPhotos, s.localDir, {
       title: config.eventName,
       subtitle: new Date(s.startedAt).toLocaleString('th-TH'),
       date: new Date(s.startedAt),
     });
-    s.printFile = print;
     s.cardFile = card;
   }
 
@@ -366,7 +359,6 @@ async function finish(reason) {
   s.photos.forEach((p, i) => {
     if (p) uploads.push([p, `photo-${i + 1}${path.extname(p).toLowerCase()}`]);
   });
-  uploads.push([s.printFile, 'print.jpg']);
   s.uploaded = (Array.isArray(s.uploaded) ? s.uploaded : []).filter((name) => existingRemoteNames.has(name));
   if (s.forceUploadAll) s.uploaded = [];
   for (const [local, name] of uploads) {
@@ -388,10 +380,6 @@ async function finish(reason) {
   s.qr = await QRCode.toDataURL(s.shareUrl, { width: 640, margin: 1, errorCorrectionLevel: 'M' });
 
   emit({ phase: 'done', message: '' });
-
-  if (config.printOnDone) {
-    sendToPrint(1).catch((err) => console.warn('[session] ส่งปริ้นอัตโนมัติไม่สำเร็จ:', err.message));
-  }
 
   clearTimeout(reviewTimer);
   reviewTimer = setTimeout(() => {
@@ -435,43 +423,6 @@ export function discard() {
   reset();
 }
 
-export async function sendToPrint(copies = 1) {
-  const s = state.session;
-  if (!s || !s.remoteDir) throw new Error('ยังไม่มีเซสชันที่อัปโหลดเสร็จ');
-
-  // เลขคิวคงที่ต่อเซสชัน — สั่งปริ้นซ้ำ (reprint) ใช้เลขเดิม ไม่จองใหม่
-  if (!s.queueNumber) {
-    s.queueNumber = await nc.claimQueueNumber();
-    emit({});
-  }
-
-  const printBuffer = await fsp.readFile(s.printFile);
-  const checksumSha256 = createHash('sha256').update(printBuffer).digest('hex');
-
-  const job = {
-    jobId: `${s.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    sessionId: s.id,
-    queueNumber: s.queueNumber,
-    booth: config.boothName,
-    event: config.eventName,
-    createdAt: new Date().toISOString(),
-    copies: Math.max(1, Math.min(5, Number(copies) || 1)),
-    printFile: `${s.remoteDir}/print.jpg`,
-    layout: config.printLayout,
-    paper: config.printLayout === 'strip2x6' ? '2x6' : '4x6',
-    checksumSha256,
-    retryCount: 0,
-    status: 'queued',
-  };
-  await nc.ensureDir(`${nc.NC_ROOT}/_print/queue`);
-  // ชื่อไฟล์ขึ้นต้นด้วยเลขคิว (zero-padded) ให้บูทปริ้นอ่านและเรียงลำดับได้โดยไม่ต้องเปิดไฟล์
-  const fileName = `Q${nc.padQueueNumber(s.queueNumber)}__${s.id}__${Date.now()}.json`;
-  await nc.putText(JSON.stringify(job, null, 2), `${nc.NC_ROOT}/_print/queue/${fileName}`);
-  s.printed = true;
-  emit({});
-  return job;
-}
-
 export async function recoverSession(sessionId, action = 'resume') {
   const safeId = path.basename(String(sessionId));
   if (!safeId || safeId !== sessionId) throw new Error('รหัสเซสชันไม่ถูกต้อง');
@@ -497,7 +448,6 @@ export async function recoverSession(sessionId, action = 'resume') {
     }),
     previews: Array.from({ length: config.shots }, (_, i) => journal.previews?.[i] || null),
     cardFile: journal.cardFile || null,
-    printFile: journal.printFile || null,
     videoFile: journal.videoFile || null,
     gifFile: journal.gifFile || null,
     uploaded: journal.uploaded || [],
@@ -505,8 +455,6 @@ export async function recoverSession(sessionId, action = 'resume') {
     shareUrl: journal.shareUrl || null,
     shareId: journal.shareId || null,
     qr: null,
-    printed: Boolean(journal.printed),
-    queueNumber: journal.queueNumber || null,
     forceUploadAll: Boolean(journal.forceUploadAll),
   };
 

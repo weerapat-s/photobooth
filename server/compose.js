@@ -246,10 +246,10 @@ async function composeGridCard(photos, spec, meta) {
 // ---------------------------------------------------------------------------
 
 /**
- * ประกอบไฟล์ปริ้น
- * @returns {{print:string, card:string}} path ของไฟล์ชีทปริ้น และไฟล์การ์ดเดี่ยว (ไว้โชว์/แชร์)
+ * ประกอบการ์ดรูปของเซสชัน (ไฟล์ที่ลูกค้าโหลดผ่าน QR)
+ * @returns {{card:string}} path ของไฟล์การ์ด
  */
-export async function composePrint(photos, outDir, meta = {}) {
+export async function composeCard(photos, outDir, meta = {}) {
   const isGrid = config.printLayout === 'grid4x6';
   const spec = isGrid ? gridSpec(photos.length, await photoAspect(photos[0])) : stripSpec(photos.length);
   const fullMeta = {
@@ -265,11 +265,7 @@ export async function composePrint(photos, outDir, meta = {}) {
   const card = path.join(outDir, 'card.jpg');
   await sharp(cardBuf).toFile(card);
 
-  // print.jpg = card.jpg เดี่ยว ๆ เสมอ ไม่วางซ้อน 2 ชุดบนกระดาษแล้ว (ตามที่ขอ)
-  const print = path.join(outDir, 'print.jpg');
-  await sharp(cardBuf).toFile(print);
-
-  return { print, card };
+  return { card };
 }
 
 /** ย่อภาพไว้โชว์บนจอ kiosk */

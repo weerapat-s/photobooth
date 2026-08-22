@@ -133,26 +133,6 @@ export async function runPreflightChecks({ deep = false, skipExternal = false } 
   });
   if (!disk.ok) status = 'BLOCKED';
 
-  const expectedPaper = config.printLayout === 'strip2x6' ? '2x6' : '4x6';
-  const configuredPaper = process.env.PAPER || expectedPaper;
-  if (configuredPaper !== expectedPaper) {
-    checks.push({ name: 'Layout / Paper', pass: false, error: `${config.printLayout} ต้องใช้ PAPER=${expectedPaper} แต่ตั้งไว้ ${configuredPaper}`, critical: true });
-    status = 'BLOCKED';
-  } else {
-    checks.push({ name: 'Layout / Paper', pass: true, detail: `${config.printLayout} → ${configuredPaper}` });
-  }
-
-  if (!skipExternal && process.env.PRINTER_NAME) {
-    try {
-      const script = '$name=$args[0]; if (-not (Get-Printer -Name $name -ErrorAction SilentlyContinue)) { exit 2 }';
-      await execFileAsync('powershell.exe', ['-NoProfile', '-Command', script, process.env.PRINTER_NAME], { timeout: 10000, windowsHide: true });
-      checks.push({ name: 'Windows Printer', pass: true, detail: process.env.PRINTER_NAME });
-    } catch {
-      checks.push({ name: 'Windows Printer', pass: false, error: `ไม่พบเครื่องพิมพ์ ${process.env.PRINTER_NAME}`, critical: true });
-      status = 'BLOCKED';
-    }
-  }
-
   // 5. Config validation check
   const cfgCheck = validateConfigPatch({
     SHOTS: config.shots,

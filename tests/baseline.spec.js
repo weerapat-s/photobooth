@@ -5,7 +5,7 @@ import sharp from 'sharp';
 import QRCode from 'qrcode';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { composePrint, makePreview } from '../server/compose.js';
+import { composeCard, makePreview } from '../server/compose.js';
 import { makeVideoFromFrames } from '../server/video.js';
 import { config, ROOT } from '../server/config.js';
 
@@ -46,24 +46,22 @@ async function runBaselineTest() {
 
   // 2. Test strip2x6 composition
   config.printLayout = 'strip2x6';
-  const stripRes = await composePrint(photoPaths, testDir, {
+  const stripRes = await composeCard(photoPaths, testDir, {
     title: 'Baseline Strip',
     subtitle: 'Test Subtitle',
   });
   assert(fs.existsSync(stripRes.card), 'Strip card.jpg must exist');
-  assert(fs.existsSync(stripRes.print), 'Strip print.jpg must exist');
   console.log('Strip2x6 compose passed.');
 
   // 3. Test grid4x6 composition
   const gridDir = path.join(testDir, 'grid');
   fs.mkdirSync(gridDir, { recursive: true });
   config.printLayout = 'grid4x6';
-  const gridRes = await composePrint(photoPaths, gridDir, {
+  const gridRes = await composeCard(photoPaths, gridDir, {
     title: 'Baseline Grid',
     subtitle: 'Test Subtitle',
   });
   assert(fs.existsSync(gridRes.card), 'Grid card.jpg must exist');
-  assert(fs.existsSync(gridRes.print), 'Grid print.jpg must exist');
   console.log('Grid4x6 compose passed.');
 
   // 4. Test preview creation
@@ -88,31 +86,6 @@ async function runBaselineTest() {
   assert(fs.existsSync(qrPath), 'QR Code file must exist');
   console.log('QR Code generation passed.');
 
-  // 7. Test Print Dry-Run via PowerShell
-  const psScript = path.join(ROOT, 'printbooth', 'print.ps1');
-  if (fs.existsSync(psScript)) {
-    try {
-      const { stdout } = await execFileAsync(
-        'powershell.exe',
-        [
-          '-ExecutionPolicy',
-          'Bypass',
-          '-File',
-          psScript,
-          '-ImagePath',
-          stripRes.print,
-          '-Paper',
-          '4x6',
-          '-DryRun',
-        ],
-        { timeout: 15000 }
-      );
-      assert(stdout.toLowerCase().includes('dry-run'), 'Powershell print script dry run output must include dry-run');
-      console.log('Print PowerShell script dry-run passed.');
-    } catch (err) {
-      throw new Error(`PowerShell print dry-run failed: ${err.message}`);
-    }
-  }
 
   // Clean up test directory
   fs.rmSync(testDir, { recursive: true, force: true });

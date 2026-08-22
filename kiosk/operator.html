@@ -65,7 +65,6 @@
     <div class="row"><b>เซสชัน</b><span class="pill idle" id="phase">-</span></div>
     <div class="row"><b>ช็อต</b><span id="count">-</span></div>
     <div class="row"><b>รหัสเซสชัน</b><span id="sid">-</span></div>
-    <div class="row"><b>เลขคิวปริ้น</b><span id="qnum">-</span></div>
     <div class="row"><b>ข้อความ</b><span id="msg">-</span></div>
     <div class="slot-grid" id="slots"></div>
     <div class="btns">
@@ -73,7 +72,6 @@
       <button id="btn-capture">ถ่ายช่องถัดไป</button>
       <button id="btn-finish">ยืนยันรูปทั้งหมด + จบงาน</button>
       <button class="ghost" id="btn-discard">ทิ้งเซสชัน</button>
-      <button class="ghost" id="btn-print">ส่งปริ้น</button>
     </div>
     <div class="msg" id="action-msg"></div>
   </div>
@@ -144,7 +142,7 @@
     <label>จำนวนช็อตต่อเซสชัน</label>
     <input id="in-shots" type="number" min="1" max="8">
 
-    <label>การ์ด/ชีทปริ้นใช้ช็อตล่าสุดกี่ภาพ (วิดีโอยังใช้ครบทุกช็อต)</label>
+    <label>การ์ดใช้ช็อตล่าสุดกี่ภาพ (วิดีโอยังใช้ครบทุกช็อต)</label>
     <input id="in-printshots" type="number" min="1" max="8">
 
     <label>ปิดเซสชันอัตโนมัติถ้าเงียบเกิน (วินาที)</label>
@@ -153,20 +151,14 @@
     <label>ชื่องาน (โชว์บนสตริปและจอลูกค้า)</label>
     <input id="in-event">
 
-    <label>เลย์เอาต์ปริ้น</label>
+    <label>เลย์เอาต์การ์ด</label>
     <select id="in-layout">
-      <option value="strip2x6">strip2x6 — สตริป 2x6 สองแถบบนกระดาษ 4x6</option>
-      <option value="grid4x6">grid4x6 — 2x2 เต็มกระดาษ 4x6</option>
+      <option value="strip2x6">strip2x6 — สตริปแนวตั้ง</option>
+      <option value="grid4x6">grid4x6 — ตาราง 2x2 ธีมมืด</option>
     </select>
 
-    <label>สีพื้นหลังธีมการ์ด/ชีทปริ้น</label>
+    <label>สีพื้นหลังธีมการ์ด</label>
     <input id="in-themecolor" type="color">
-
-    <label>ส่งปริ้นอัตโนมัติเมื่อจบเซสชัน</label>
-    <select id="in-autoprint">
-      <option value="false">ไม่ — รอกดเอง</option>
-      <option value="true">ใช่ — ปริ้นทันที</option>
-    </select>
 
     <div class="btns"><button id="btn-save">บันทึก</button></div>
     <div class="msg" id="save-msg"></div>
@@ -190,7 +182,6 @@ function applyState(s) {
   $('phase').className = 'pill ' + s.phase;
   $('count').textContent = s.session ? s.session.count + ' / ' + s.session.total : '-';
   $('sid').textContent = s.session ? s.session.id : '-';
-  $('qnum').textContent = s.session && s.session.queueNumber ? '#' + s.session.queueNumber : '-';
   $('msg').textContent = s.message || '-';
   $('event-name').textContent = s.eventName || 'Photo Booth';
   renderSlots(s);
@@ -201,7 +192,6 @@ function applyState(s) {
   $('btn-capture').textContent = s.captureSource === 'folder' ? 'กดชัตเตอร์ที่กล้อง' : externalCapture ? 'ถ่ายจาก iPad' : 'ถ่ายช่องถัดไป';
   $('btn-finish').disabled = !(s.phase === 'shooting' && s.session && s.session.count === s.session.total) || s.capturing;
   $('btn-discard').disabled = s.phase === 'processing' || s.phase === 'idle';
-  $('btn-print').disabled = !(s.phase === 'done' && s.session && !s.session.printed);
 }
 
 function renderSlots(s) {
@@ -298,7 +288,6 @@ async function loadConfig() {
   $('in-event').value = c.eventName;
   $('in-layout').value = c.printLayout;
   $('in-themecolor').value = c.printThemeColor;
-  $('in-autoprint').value = String(c.printOnDone);
   browse(c.watchDir || null);
 }
 
@@ -367,7 +356,6 @@ async function cleanup(dryRun) {
       'local ' + r.deletedLocal.length,
       'cloud ' + r.deletedCloud.length,
       'shares ' + r.revokedShares.length,
-      'ประวัติปริ้น ' + r.deletedPrintHistory.length,
       r.disk.freeGb === null ? '' : 'ดิสก์เหลือ ' + r.disk.freeGb.toFixed(1) + ' GB',
     ].filter(Boolean).join(' · ');
   } catch (err) {
@@ -418,7 +406,6 @@ $('btn-save').onclick = async () => {
         EVENT_NAME: $('in-event').value.trim(),
         PRINT_LAYOUT: $('in-layout').value,
         PRINT_THEME_COLOR: $('in-themecolor').value,
-        PRINT_ON_DONE: $('in-autoprint').value,
       }),
     });
     $('save-msg').innerHTML = '<span class="ok">บันทึกแล้ว</span>';
@@ -441,7 +428,6 @@ function bindAction(id, path, label) {
 }
 bindAction('btn-start', '/api/start', 'เริ่มเซสชันแล้ว — กดถ่ายทีละช่อง');
 bindAction('btn-discard', '/api/discard', 'ทิ้งเซสชันแล้ว');
-bindAction('btn-print', '/api/print', 'ส่งเข้าคิวปริ้นแล้ว');
 $('btn-capture').onclick = () => capturePhoto();
 $('btn-finish').onclick = async () => {
   if (!confirm('ยืนยันใช้รูปทุกช่องและจบงาน? หลังจากนี้จะเริ่มจัดภาพและอัปโหลด')) return;

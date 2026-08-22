@@ -115,20 +115,4 @@ await withServer('server/index.js', {
 if (startupSessionId) fs.rmSync(path.join(process.cwd(), 'sessions', startupSessionId), { recursive: true, force: true });
 fs.rmSync(startupCaptureDir, { recursive: true, force: true });
 
-await withServer('printbooth/index.js', {
-  PRINT_HOST: '127.0.0.1',
-  PRINT_PORT: '48712',
-  BOARD_HOST: '127.0.0.1',
-  BOARD_PORT: '48713',
-  AUTO_PRINT: 'false',
-  NC_BASE: 'http://127.0.0.1:9',
-  NC_SHARE_TOKEN: 'test-only',
-}, async () => {
-  const admin = await waitForJson('http://127.0.0.1:48712/api/status');
-  assert.strictEqual(admin.boardPort, 48713);
-  const board = await waitForJson('http://127.0.0.1:48713/api/board');
-  assert(Array.isArray(board.waiting));
-  await waitForStatus('http://127.0.0.1:48713/api/status', 404);
-});
-
 console.log('Startup smoke tests passed.');

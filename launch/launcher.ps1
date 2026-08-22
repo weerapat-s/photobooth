@@ -1,5 +1,5 @@
 ﻿param(
-  [ValidateSet("booth", "operator", "print", "bridge")][string]$Mode = "booth"
+  [ValidateSet("booth", "operator", "bridge")][string]$Mode = "booth"
 )
 
 $ErrorActionPreference = "Stop"
@@ -35,12 +35,6 @@ elseif ($Mode -eq "operator") {
   $title = "จอช่าง"
   $kiosk = $false
   $page = "/operator.html"
-}
-elseif ($Mode -eq "print") {
-  $script = Join-Path $root "printbooth\index.js"
-  $port = [int](Get-EnvValue "PRINT_PORT" "4701")
-  $title = "บูทปริ้น"
-  $kiosk = $false
 }
 else {
   $script = Join-Path $root "server\index.js"

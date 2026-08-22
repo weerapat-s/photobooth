@@ -8,8 +8,7 @@ $root = Split-Path -Parent $here
 
 $targets = @(
   @{ Name = "Photo Booth"; Vbs = "booth.vbs"; Icon = "booth.ico"; Desc = "จอลูกค้า — เต็มจอ" },
-  @{ Name = "จอช่าง"; Vbs = "operator.vbs"; Icon = "operator.ico"; Desc = "จอช่าง — คุมเซสชันและตั้งค่า" },
-  @{ Name = "บูทปริ้น"; Vbs = "print-booth.vbs"; Icon = "print.ico"; Desc = "เปิดบูทปริ้นรูป" }
+  @{ Name = "จอช่าง"; Vbs = "operator.vbs"; Icon = "operator.ico"; Desc = "จอช่าง — คุมเซสชันและตั้งค่า" }
 )
 
 $desktop = [Environment]::GetFolderPath("Desktop")

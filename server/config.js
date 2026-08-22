@@ -18,7 +18,6 @@ export const config = {
   boothName: process.env.BOOTH_NAME || 'booth-1',
   eventName: process.env.EVENT_NAME || 'Photo Booth',
   kioskMode: process.env.KIOSK_MODE || 'operator',
-  printOnDone: bool(process.env.PRINT_ON_DONE, false),
   requirePreflight: bool(process.env.REQUIRE_PREFLIGHT, false),
   preflightMaxAgeMinutes: num(process.env.PREFLIGHT_MAX_AGE_MINUTES, 60),
 
@@ -108,7 +107,6 @@ export function saveEnv(patch) {
   if ('EVENT_NAME' in patch) config.eventName = String(patch.EVENT_NAME);
   if ('KIOSK_MODE' in patch) config.kioskMode = String(patch.KIOSK_MODE);
   if ('SESSION_IDLE_SECONDS' in patch) config.sessionIdleSeconds = Number(patch.SESSION_IDLE_SECONDS);
-  if ('PRINT_ON_DONE' in patch) config.printOnDone = String(patch.PRINT_ON_DONE).toLowerCase() === 'true';
   if ('PRINT_LAYOUT' in patch) config.printLayout = String(patch.PRINT_LAYOUT);
   if ('PRINT_SHOTS' in patch) config.printShots = Number(patch.PRINT_SHOTS);
   if ('PRINT_THEME_COLOR' in patch) config.printThemeColor = String(patch.PRINT_THEME_COLOR);

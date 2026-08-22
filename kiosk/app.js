@@ -283,18 +283,6 @@ $('btn-cancel-session').onclick = async () => {
   await api(discardPath(), { method: usesPairedKiosk() ? 'DELETE' : 'POST' }).catch((err) => { $('shoot-status').textContent = err.message; });
 };
 
-$('btn-print').onclick = async () => {
-  $('btn-print').disabled = true;
-  $('print-status').textContent = 'กำลังส่งไปเครื่องปริ้น...';
-  try {
-    await api(usesPairedKiosk() ? '/api/web/print' : '/api/print', { method: 'POST', body: JSON.stringify({ copies: 1 }) });
-    $('print-status').textContent = 'ส่งเข้าคิวปริ้นแล้ว รอรับที่บูทปริ้น';
-  } catch (err) {
-    $('print-status').textContent = 'ส่งไม่สำเร็จ: ' + err.message;
-    $('btn-print').disabled = false;
-  }
-};
-
 function applyState(state) {
   latestState = state;
   if (state.eventName) $('event-title').textContent = state.eventName;
@@ -361,14 +349,8 @@ function applyState(state) {
       $('qr').src = state.session.qr || '';
       $('share-url').textContent = state.session.shareUrl || '';
       $('card').src = state.session.previews[0] || '';
-      $('btn-print').disabled = false;
-      $('print-status').textContent = '';
       doneDeadline = Date.now() + (cfg.reviewSeconds || 90) * 1000;
     }
-    $('btn-print').disabled = Boolean(state.session.printed);
-    if (state.session.printed && !$('print-status').textContent) $('print-status').textContent = 'ส่งเข้าคิวปริ้นแล้ว';
-    $('queue-number').hidden = !state.session.queueNumber;
-    $('queue-number').textContent = state.session.queueNumber ? `คิวปริ้น #${state.session.queueNumber}` : '';
     show('done');
     return;
   }

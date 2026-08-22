@@ -185,33 +185,6 @@ export function directDownloadUrl(remoteDir, fileName) {
   return `${nc.base}/s/${nc.token}/download?path=/${encodeURIComponent(rel)}&files=${encodeURIComponent(fileName)}`;
 }
 
-export const padQueueNumber = (n, width = 4) => String(n).padStart(width, '0');
-
-function todayKey() {
-  const d = new Date();
-  const p = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}`;
-}
-
-/**
- * จองเลขคิวใหม่แบบ atomic ผ่าน MKCOL — Nextcloud การันตีว่าสร้างโฟลเดอร์ชื่อซ้ำไม่ได้
- * (คนละเครื่อง/คนละบูทถ่ายพร้อมกันก็ไม่มีทางได้เลขซ้ำ) รีเซ็ตทุกวันด้วยโฟลเดอร์แยกตามวันที่
- */
-export async function claimQueueNumber() {
-  const dir = `${nc.root}/_print/tickets/${todayKey()}`;
-  await ensureDir(dir);
-
-  const existing = await list(dir);
-  let n = existing.length ? Math.max(...existing.map((e) => Number(e.name) || 0)) + 1 : 1;
-
-  for (let tries = 0; tries < 30; tries++, n++) {
-    const res = await dav('MKCOL', `${dir}/${padQueueNumber(n)}`, { timeout: 15000 });
-    if (res.status === 201) return n;
-    if (res.status !== 405) throw new Error(`จองเลขคิวไม่ได้: HTTP ${res.status}`);
-  }
-  throw new Error('จองเลขคิวไม่ได้ — ชนกันถี่เกินไป');
-}
-
 export async function health() {
   try {
     const res = await dav('PROPFIND', '', { headers: { Depth: '0' }, timeout: 15000 });

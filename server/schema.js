@@ -42,9 +42,7 @@ export function validateConfigPatch(patch) {
         }
         break;
       }
-      case 'PORT':
-      case 'PRINT_PORT':
-      case 'BOARD_PORT': {
+      case 'PORT': {
         const num = Number(val);
         if (!Number.isInteger(num) || num < 1 || num > 65535) {
           errors.push(`${key} ต้องเป็นหมายเลขพอร์ตระหว่าง 1 ถึง 65535 (ได้รับ: ${val})`);
@@ -84,12 +82,6 @@ export function validateConfigPatch(patch) {
       case 'DCC_TRANSPORT': {
         if (!['auto', 'webserver', 'remotecmd'].includes(strVal)) {
           errors.push(`DCC_TRANSPORT ต้องเป็น 'auto', 'webserver' หรือ 'remotecmd' (ได้รับ: ${val})`);
-        }
-        break;
-      }
-      case 'PRINT_ON_DONE': {
-        if (!['true', 'false'].includes(strVal.toLowerCase())) {
-          errors.push(`PRINT_ON_DONE ต้องเป็น true หรือ false (ได้รับ: ${val})`);
         }
         break;
       }

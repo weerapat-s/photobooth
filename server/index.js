@@ -7,7 +7,7 @@ import { config, ROOT, saveEnv } from './config.js';
 import * as watch from './watcher.js';
 import * as nc from './nextcloud.js';
 import { camera } from './camera.js';
-import { bus, snapshot, reset, startSession, captureSlot, deletePhoto, finishNow, discard, sendToPrint, fakeShot, scanUnfinishedSessions, recoverSession, ingestIpadPhoto } from './session.js';
+import { bus, snapshot, reset, startSession, captureSlot, deletePhoto, finishNow, discard, fakeShot, scanUnfinishedSessions, recoverSession, ingestIpadPhoto } from './session.js';
 import { runPreflightChecks } from './preflight.js';
 import { generateCalibrationSheet } from './calibration.js';
 import { runCleanup } from './retention.js';
@@ -130,7 +130,6 @@ app.get('/api/web/bootstrap', requireWebKiosk, (req, res) => {
       shots: config.shots,
       countdown: config.countdown,
       eventName: config.eventName,
-      printOnDone: config.printOnDone,
       reviewSeconds: config.reviewSeconds,
       cameraFacing: config.webCameraFacing,
       mirror: config.webMirror,
@@ -211,15 +210,6 @@ app.post('/api/web/session/reset', requireWebKiosk, (req, res) => {
   res.json({ ok: true, state: snapshot() });
 });
 
-app.post('/api/web/print', requireWebKiosk, async (req, res) => {
-  try {
-    const job = await sendToPrint(req.body?.copies);
-    res.json({ ok: true, job });
-  } catch (err) {
-    res.status(400).json({ ok: false, error: err.message });
-  }
-});
-
 app.get('/api/web/events', requireWebKiosk, (req, res) => {
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
   res.flushHeaders();
@@ -238,7 +228,6 @@ app.get('/api/ipad/bootstrap', requireIpadToken, (req, res) => {
       shots: config.shots,
       countdown: config.countdown,
       eventName: config.eventName,
-      printOnDone: config.printOnDone,
       reviewSeconds: config.reviewSeconds,
     },
     state: snapshot(),
@@ -349,7 +338,6 @@ app.get('/api/config', (req, res) => {
     printLayout: config.printLayout,
     printShots: config.printShots,
     printThemeColor: config.printThemeColor,
-    printOnDone: config.printOnDone,
     watchDir: config.watchDir,
     captureSource: config.captureSource,
     kioskMode: config.kioskMode,
@@ -471,15 +459,6 @@ app.post('/api/reset', blockLegacyMutationInIpadMode, (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/print', blockLegacyMutationInIpadMode, async (req, res) => {
-  try {
-    const job = await sendToPrint(req.body?.copies);
-    res.json({ ok: true, job });
-  } catch (err) {
-    res.status(400).json({ ok: false, error: err.message });
-  }
-});
-
 app.post('/api/mock-shot', blockLegacyMutationInIpadMode, async (req, res) => {
   try {
     const file = await fakeShot(req.body?.slot ?? null);
@@ -492,7 +471,7 @@ app.post('/api/mock-shot', blockLegacyMutationInIpadMode, async (req, res) => {
 /** เปลี่ยนค่าตั้งต้นจากหน้า operator แล้วเขียนกลับ .env */
 app.post('/api/settings', blockLegacyMutationInIpadMode, (req, res) => {
   try {
-    const allowed = ['WATCH_DIR', 'SHOTS', 'PRINT_SHOTS', 'EVENT_NAME', 'SESSION_IDLE_SECONDS', 'PRINT_ON_DONE', 'PRINT_LAYOUT', 'PRINT_THEME_COLOR', 'REVIEW_SECONDS', 'CAPTURE_SOURCE', 'COUNTDOWN', 'KIOSK_MODE', 'WEB_CAMERA_FACING', 'WEB_MIRROR'];
+    const allowed = ['WATCH_DIR', 'SHOTS', 'PRINT_SHOTS', 'EVENT_NAME', 'SESSION_IDLE_SECONDS', 'PRINT_LAYOUT', 'PRINT_THEME_COLOR', 'REVIEW_SECONDS', 'CAPTURE_SOURCE', 'COUNTDOWN', 'KIOSK_MODE', 'WEB_CAMERA_FACING', 'WEB_MIRROR'];
     const patch = {};
     for (const key of allowed) {
       if (req.body && req.body[key] !== undefined && req.body[key] !== null) patch[key] = req.body[key];

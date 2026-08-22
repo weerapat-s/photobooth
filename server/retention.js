@@ -14,7 +14,6 @@ export const retentionConfig = {
   localRetentionDays: days('LOCAL_RETENTION_DAYS', 7),
   cloudRetentionDays: days('CLOUD_RETENTION_DAYS', 30),
   shareRetentionDays: days('SHARE_RETENTION_DAYS', 7),
-  printHistoryDays: days('PRINT_HISTORY_DAYS', 30),
   minFreeDiskGb: days('MIN_FREE_DISK_GB', 5),
 };
 
@@ -48,12 +47,10 @@ export async function runCleanup({ dryRun = true, activeSessionId = null, skipCl
   const localCutoff = now - retentionConfig.localRetentionDays * 86400 * 1000;
   const cloudCutoff = now - retentionConfig.cloudRetentionDays * 86400 * 1000;
   const shareCutoff = now - retentionConfig.shareRetentionDays * 86400 * 1000;
-  const printCutoff = now - retentionConfig.printHistoryDays * 86400 * 1000;
   const unfinishedIds = new Set(scanUnfinishedSessions().map((s) => s.id));
   const deletedLocal = [];
   const deletedCloud = [];
   const revokedShares = [];
-  const deletedPrintHistory = [];
 
   if (fs.existsSync(config.sessionsDir)) {
     const entries = await fsp.readdir(config.sessionsDir, { withFileTypes: true });
@@ -97,17 +94,6 @@ export async function runCleanup({ dryRun = true, activeSessionId = null, skipCl
     }
   }
 
-  const donePath = `${nc.NC_ROOT}/_print/done`;
-  const doneJobs = skipCloud ? [] : await nc.list(donePath).catch(() => []);
-  for (const item of doneJobs) {
-    if (item.isDir || !olderThan(item.modified, printCutoff)) continue;
-    deletedPrintHistory.push(item.name);
-    if (!dryRun) {
-      await nc.remove(`${donePath}/${item.name}`);
-      logAudit({ action: 'delete_print_history', name: item.name });
-    }
-  }
-
   return {
     dryRun,
     policy: retentionConfig,
@@ -115,7 +101,6 @@ export async function runCleanup({ dryRun = true, activeSessionId = null, skipCl
     deletedLocal,
     deletedCloud,
     revokedShares,
-    deletedPrintHistory,
     timestamp: new Date().toISOString(),
   };
 }

@@ -23,22 +23,6 @@ const boothSvg = `
   <circle cx="186" cy="108" r="9" fill="#ffd166"/>
 </svg>`;
 
-const printSvg = `
-<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
-  <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#4cc9f0"/><stop offset="1" stop-color="#3a0ca3"/>
-    </linearGradient>
-  </defs>
-  <rect width="256" height="256" rx="56" fill="url(#g)"/>
-  <rect x="72" y="48" width="112" height="56" rx="8" fill="#fff" opacity="0.85"/>
-  <rect x="40" y="104" width="176" height="72" rx="16" fill="#fff"/>
-  <circle cx="180" cy="128" r="9" fill="#3a0ca3"/>
-  <rect x="72" y="152" width="112" height="64" rx="8" fill="#ffd166"/>
-  <rect x="90" y="170" width="76" height="8" rx="4" fill="#3a0ca3" opacity="0.5"/>
-  <rect x="90" y="188" width="52" height="8" rx="4" fill="#3a0ca3" opacity="0.5"/>
-</svg>`;
-
 /** ห่อ PNG หลายขนาดเป็นไฟล์ ICO */
 function buildIco(pngs) {
   const header = Buffer.alloc(6);
@@ -93,5 +77,4 @@ const operatorSvg = `
 </svg>`;
 
 await write('booth', boothSvg);
-await write('print', printSvg);
 await write('operator', operatorSvg);
