@@ -1,6 +1,8 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
 import { config } from './config.js';
+import { detectSlots, halfOf, renderTemplateCard, templateExists } from './template.js';
 
 const DPI = config.printDpi;
 const inch = (n) => Math.round(n * DPI);
@@ -249,7 +251,39 @@ async function composeGridCard(photos, spec, meta) {
  * ประกอบการ์ดรูปของเซสชัน (ไฟล์ที่ลูกค้าโหลดผ่าน QR)
  * @returns {{card:string}} path ของไฟล์การ์ด
  */
+// สแกนหาช่องในเทมเพลตครั้งเดียวแล้วจำไว้ (สแกนทุกพิกเซล ช้าเกินกว่าจะทำทุกเซสชัน)
+// ถ้าไฟล์เทมเพลตถูกแก้ จะรู้จาก mtime แล้วสแกนใหม่ให้เอง
+let templateCache = null;
+async function loadTemplate(templatePath, half) {
+  const mtime = fs.statSync(templatePath).mtimeMs;
+  if (templateCache && templateCache.path === templatePath && templateCache.mtime === mtime && templateCache.half === half) {
+    return templateCache.template;
+  }
+  const full = await detectSlots(templatePath);
+  if (!full.slots.length) throw new Error(`ไม่พบช่องใส่รูปในเทมเพลต ${path.basename(templatePath)}`);
+  const template = half === 'full' ? full : halfOf(full, half);
+  templateCache = { path: templatePath, mtime, half, template };
+  console.log(`[compose] เทมเพลต ${path.basename(templatePath)} — ${template.width}x${template.height}, ${template.slots.length} ช่อง`);
+  return template;
+}
+
+/** จำนวนช่องรูปของการ์ดตามการตั้งค่าปัจจุบัน (ใช้เตือนตอน preflight ว่า SHOTS ตรงกับเทมเพลตไหม) */
+export async function cardSlotCount() {
+  if (!templateExists(config.cardTemplate)) return null;
+  const template = await loadTemplate(config.cardTemplate, config.cardTemplateHalf);
+  return template.slots.length;
+}
+
 export async function composeCard(photos, outDir, meta = {}) {
+  // ใช้เทมเพลตสำเร็จรูปถ้าตั้งไว้ ไม่งั้นวาดเลย์เอาต์เดิม
+  if (templateExists(config.cardTemplate)) {
+    const template = await loadTemplate(config.cardTemplate, config.cardTemplateHalf);
+    const cardBuf = await renderTemplateCard(photos, template, config.cardTemplate, { scale: config.cardTemplateScale });
+    const card = path.join(outDir, 'card.jpg');
+    await sharp(cardBuf).toFile(card);
+    return { card };
+  }
+
   const isGrid = config.printLayout === 'grid4x6';
   const spec = isGrid ? gridSpec(photos.length, await photoAspect(photos[0])) : stripSpec(photos.length);
   const fullMeta = {

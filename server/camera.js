@@ -40,7 +40,7 @@ function friendlyDccError(raw) {
     .map(String)
     .join('\n');
   if (/no camera is connected/i.test(text)) {
-    return 'ยังไม่พบ EOS R — ตรวจสาย USB เปิดกล้อง และปิดโปรแกรมอื่นที่กำลังจับกล้อง';
+    return 'ยังไม่พบกล้อง — ตรวจสาย USB เปิดกล้อง และปิดโปรแกรมอื่นที่กำลังจับกล้อง';
   }
   if (/ENOENT|not found|cannot find/i.test(text)) {
     return 'ไม่พบ digiCamControl — ตรวจตำแหน่งติดตั้งใน DCC_PATH';
@@ -51,7 +51,7 @@ function friendlyDccError(raw) {
   const responseMessage = text.match(/response:error;message:([^\r\n]+)/i)?.[1]?.trim();
   if (responseMessage) return `digiCamControl: ${responseMessage}`;
   if (/CameraControlRemoteCmd|command failed/i.test(text)) {
-    return 'ตรวจ EOS R ไม่สำเร็จ — กดตรวจใหม่ หากยังไม่พบให้ปิดแล้วเปิดกล้องใหม่';
+    return 'ตรวจกล้องไม่สำเร็จ — กดตรวจใหม่ หากยังไม่พบให้ปิดแล้วเปิดกล้องใหม่';
   }
   return text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).slice(-1)[0] || 'digiCamControl ทำงานไม่สำเร็จ';
 }
@@ -311,7 +311,7 @@ async function startDccLiveView() {
   if (liveViewStartPromise) return liveViewStartPromise;
   liveViewStartPromise = (async () => {
     // บน digiCamControl 2.1.7 ของเครื่องนี้ URL ?CMD=... ตอบ 200 แต่ไม่เปิดหน้าต่างเสมอ
-    // Remote Utility เป็นช่องทางที่ทดสอบกับ EOS R แล้วว่าเปิด Live View จริง
+    // Remote Utility เป็นช่องทางที่ทดสอบแล้วว่าเปิด Live View ได้จริง (ทดสอบด้วย Canon EOS R)
     await remote(['/c', 'do', 'LiveViewWnd_Show']);
     liveViewFrameCache = null;
     liveViewFrameCacheAt = 0;
@@ -336,7 +336,7 @@ async function startDccLiveView() {
 }
 
 async function stopDccLiveView() {
-  // EOS R + digiCamControl 2.1.7 บนเครื่องนี้ล้มเมื่อสั่ง LiveViewWnd_Hide ซ้ำๆ
+  // digiCamControl 2.1.7 บนเครื่องนี้ล้มเมื่อสั่ง LiveViewWnd_Hide ซ้ำๆ (เจอกับ Canon EOS R)
   // จึงคง Live View/MJPEG connection ไว้สำหรับช็อตถัดไป แต่หยุดส่งเฟรมจากหน้าเว็บได้
   primedLiveViewFrame = null;
 }

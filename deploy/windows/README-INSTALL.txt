@@ -8,7 +8,7 @@ REQUIREMENTS
 1. Windows 10/11 64-bit
 2. Node.js 22 LTS: https://nodejs.org
 3. digiCamControl 2.1.7: https://digicamcontrol.com/download
-4. Canon EOS R connected by a USB data cable to the Windows computer
+4. A DSLR/mirrorless camera supported by digiCamControl (Canon, Nikon, Sony, ...) connected by a USB data cable
 5. Internet access during installation
 
 INSTALL
@@ -18,7 +18,7 @@ INSTALL
 4. Open .env and enter NC_BASE, NC_SHARE_TOKEN, NC_SHARE_PASSWORD,
    NC_USER and NC_APP_PASSWORD. Do not send this file through chat.
 5. Set WEB_PAIR_CODE to the short code that the iPad operator will enter.
-6. Restart Windows and verify that digiCamControl sees the EOS R.
+6. Restart Windows and verify that digiCamControl sees the camera.
 
 CLOUDFLARE / booth.ienas.site
 The public hostname can point to only one active Photo Booth backend for a
@@ -38,10 +38,10 @@ independent backends behind booth.ienas.site because sessions can split between
 the two computers.
 
 FIRST TEST
-1. Connect and turn on EOS R; close EOS Utility and Capture One.
-2. Open digiCamControl and check that EOS R appears.
+1. Connect and turn on the camera; close any other tethering app (EOS Utility, Capture One, ...).
+2. Open digiCamControl and check that the camera appears.
 3. Open https://booth.ienas.site on iPad Safari and allow Camera access.
-4. The iPad camera is Live View only; the final photo comes from EOS R.
+4. The iPad camera is Live View only; the final photo comes from the DSLR.
 5. Take one complete test session before using it with customers.
 
 UNINSTALL SHORTCUTS

@@ -1,11 +1,13 @@
-# Photo Booth DSLR + iPad Web (EOS R → Windows bridge → iPad → Nextcloud)
+# Photo Booth DSLR + iPad Web (กล้อง DSLR → Windows bridge → iPad → Nextcloud)
 
-ระบบโฟโต้บูทแบบบริการตัวเองตามโครงสร้าง DSLR booth: Canon EOS R ติดเหนือจอและต่อ USB เข้ากล่อง Windows/mini PC ที่ซ่อนในบูท ส่วน iPad เปิดหน้าเว็บเป็นจอสัมผัสผ่าน Wi-Fi
+ระบบโฟโต้บูทแบบบริการตัวเองตามโครงสร้าง DSLR booth: กล้องติดเหนือจอและต่อ USB เข้ากล่อง Windows/mini PC ที่ซ่อนในบูท ส่วน iPad เปิดหน้าเว็บเป็นจอสัมผัสผ่าน Wi-Fi
+
+**ใช้กล้องรุ่นไหนก็ได้ที่ digiCamControl รองรับ** (Canon/Nikon/Sony ฯลฯ) ระบบไม่ได้ผูกกับรุ่นใดรุ่นหนึ่ง — ขอแค่ digiCamControl มองเห็นกล้องและสั่งถ่ายได้ ตัวที่ทดสอบจริงบนเครื่องนี้คือ Canon EOS R
 
 - **iPad (booth)** — เปิดหน้าเว็บ Photo Booth ลูกค้ากดเริ่ม ตรวจรูป และถ่ายใหม่เฉพาะช่องเอง
-- **Windows bridge** — ควบคุม EOS R ผ่าน digiCamControl และส่งสถานะ/ภาพกลับหน้าเว็บ
+- **Windows bridge** — ควบคุมกล้องผ่าน digiCamControl และส่งสถานะ/ภาพกลับหน้าเว็บ
   จากนั้น backend จัดหน้าสตริป ทำวิดีโอ อัปโหลดขึ้น Nextcloud แล้วโชว์ QR
-- **backend/bridge** — รันบน Windows ที่ต่อสาย USB กับ EOS R โดยตรง; ไม่จำเป็นต้องมี Mac หรือแอป iPad แบบ native
+- **backend/bridge** — รันบน Windows ที่ต่อสาย USB กับกล้องโดยตรง; ไม่จำเป็นต้องมี Mac หรือแอป iPad แบบ native
 
 ลูกค้ารับรูปและวิดีโอด้วยการสแกน QR ที่ชี้ไปยังลิงก์ Nextcloud เฉพาะของเซสชันตัวเอง
 
@@ -13,11 +15,11 @@
 
 | `CAPTURE_SOURCE` | ใครลั่นชัตเตอร์ | live view | ใช้เมื่อ |
 |---|---|---|---|
-| `digicam` (เลือกใช้) | ลูกค้ากดบนเว็บ iPad แล้ว Windows สั่งกล้อง | เฉพาะ DCC webserver | EOS R ต่อ USB เข้ากล่อง Windows ที่ซ่อนในบูท |
+| `digicam` (เลือกใช้) | ลูกค้ากดบนเว็บ iPad แล้ว Windows สั่งกล้อง | เฉพาะ DCC webserver | กล้อง DSLR ต่อ USB เข้ากล่อง Windows ที่ซ่อนในบูท |
 | `folder` | เจ้าหน้าที่กดกล้อง / รีโมท | ไม่มี | ใช้ Capture One tether แล้วให้แอปวางภาพลงช่องว่าง |
 | `mock` | เจ้าหน้าที่กดปุ่มถ่ายบนจอช่าง | ไม่มี | เทสต์ทั้ง pipeline โดยไม่ต้องมีกล้อง |
-| `web` | ลูกค้ากดบน PWA | กล้องใน iPad | ทางเลือกสำรอง ไม่สามารถควบคุม EOS R ผ่าน USB |
-| `ipad` | แอป Native iPad สั่ง EOS R ผ่าน USB | อยู่ในแอป | ทางเลือกทดลอง ต้องมี CascableCore license และ Apple signing |
+| `web` | ลูกค้ากดบน PWA | กล้องใน iPad | ทางเลือกสำรอง ไม่สามารถควบคุมกล้อง DSLR ผ่าน USB |
+| `ipad` | แอป Native iPad สั่งกล้องผ่าน USB | อยู่ในแอป | ทางเลือกทดลอง ต้องมี CascableCore license และ Apple signing |
 
 ## ตั้งค่าแบบ DSLR booth + เว็บบน iPad
 
@@ -31,14 +33,14 @@ KIOSK_MODE=self_service
 
 จากนั้น:
 
-1. ต่อ EOS R ผ่านสาย USB data เข้ากล่อง Windows/mini PC แล้วเปิด digiCamControl ให้เห็นกล้อง
+1. ต่อกล้องผ่านสาย USB data เข้ากล่อง Windows/mini PC แล้วเปิด digiCamControl ให้เห็นกล้อง
 2. รัน backend บน Windows และให้ iPad ต่อ Wi-Fi วงเดียวกัน
 3. เปิด `http://<IP-Windows>:4700` ด้วย Safari บน iPad
 4. เพิ่มหน้าเว็บไว้บน Home Screen แล้วเปิด Guided Access ตามหัวข้อถัดไป เพื่อกันลูกค้าปัดออก
 
-สาย EOS R ไม่ได้ต่อเข้า iPad โดยตรง เว็บเป็นรีโมต UI ส่วน Windows bridge เป็นผู้ควบคุม USB/PTP ของกล้อง จึงไม่ต้องใช้ CascableCore หรือ Apple Developer
+สายกล้องไม่ได้ต่อเข้า iPad โดยตรง เว็บเป็นรีโมต UI ส่วน Windows bridge เป็นผู้ควบคุม USB/PTP ของกล้อง จึงไม่ต้องใช้ CascableCore หรือ Apple Developer
 
-เมื่อติดตั้ง shortcut ด้วย `npm run install-shortcuts` แล้ว Windows bridge จะเปิดเองหลังล็อกอินโดยไม่แสดงหน้าต่าง และจะเปิด digiCamControl ให้อัตโนมัติเมื่อหน้าเว็บตรวจกล้อง หน้า iPad ตรวจสถานะทุก 5 วินาที: ถ้าไม่พบ EOS R ปุ่มเริ่มจะถูกล็อก และจะปลดเองเมื่อกล้องพร้อม
+เมื่อติดตั้ง shortcut ด้วย `npm run install-shortcuts` แล้ว Windows bridge จะเปิดเองหลังล็อกอินโดยไม่แสดงหน้าต่าง และจะเปิด digiCamControl ให้อัตโนมัติเมื่อหน้าเว็บตรวจกล้อง หน้า iPad ตรวจสถานะทุก 5 วินาที: ถ้าไม่พบกล้อง ปุ่มเริ่มจะถูกล็อก และจะปลดเองเมื่อกล้องพร้อม
 
 ลิงก์ใช้งานจริงผ่าน HTTPS คือ **https://booth.ienas.site** เชื่อมด้วย Cloudflare Tunnel ชื่อ `photobooth-windows-local` และเปิดอัตโนมัติพร้อม Windows bridge โดยไม่ต้อง forward port เราเตอร์ หน้าเว็บโหมดบริการตัวเองต้องจับคู่ด้วย `WEB_PAIR_CODE` หนึ่งครั้งก่อนใช้งาน คุกกี้จับคู่เป็น HttpOnly/SameSite ส่วน `IPAD_API_TOKEN` แบบยาวยังเป็น master secret ของ API และ API แบบเดิมถูกปิดในโหมดนี้ไม่ให้คนภายนอกสั่งกล้องโดยไม่ยืนยัน
 
@@ -88,7 +90,7 @@ netsh http add urlacl url=http://+:5513/ user="เครื่องนี้\�
 
 ## เซสชันเริ่ม/จบยังไง
 
-**โหมด `KIOSK_MODE=self_service`:** ลูกค้ากดเริ่มบน iPad → ระบบนับถอยหลังและสั่ง EOS R ผ่าน Windows → ตรวจภาพแต่ละช่อง → ถ้าไม่ชอบกดถ่ายใหม่เฉพาะช่องนั้น รูปช่องอื่นไม่เลื่อน → เมื่อครบกดยืนยัน → จัดหน้า + ทำวิดีโอ + อัปโหลด + โชว์ QR
+**โหมด `KIOSK_MODE=self_service`:** ลูกค้ากดเริ่มบน iPad → ระบบสั่งกล้องผ่าน Windows → ตรวจภาพแต่ละช่อง → ถ้าไม่ชอบกดถ่ายใหม่เฉพาะช่องนั้น รูปช่องอื่นไม่เลื่อน → เมื่อครบกดยืนยัน → จัดหน้า + ทำวิดีโอ + อัปโหลด + โชว์ QR
 
 **โหมดเจ้าหน้าที่:** เจ้าหน้าที่กด "เริ่มเซสชันใหม่" บนจอช่าง → กดถ่ายทีละช่อง → ตรวจภาพแต่ละช่อง → ถ้าภาพเสียให้กด "ลบรูป" หรือ "ถ่ายใหม่" ที่ช่องนั้น รูปช่องอื่นจะไม่เลื่อน → เมื่อครบทุกช่องกด "ยืนยันรูปทั้งหมด + จบงาน"
 
@@ -139,12 +141,14 @@ npm start
 | ตัวแปร | ค่าเริ่มต้น | ความหมาย |
 |---|---|---|
 | `CAPTURE_SOURCE` | `digicam` | แหล่งภาพ (ดูตารางด้านบน) |
-| `SHOTS` | 4 | จำนวนช็อตต่อเซสชัน |
-| `COUNTDOWN` | 3 | วินาทีนับถอยหลังก่อนแต่ละช็อต |
+| `SHOTS` | 3 | จำนวนช็อตต่อเซสชัน (ต้องเท่ากับจำนวนช่องในเทมเพลตการ์ด) |
+| `COUNTDOWN` | 0 | วินาทีนับถอยหลังก่อนถ่าย — 0 = ถ่ายทันทีที่กด (เจ้าหน้าที่คุมจังหวะเอง) |
 | `SHOT_GAP_SECONDS` | 1.5 | ค่าสำรองเดิม (โหมดเจ้าหน้าที่ควบคุมไม่ถ่ายต่อเอง) |
 | `SESSION_IDLE_SECONDS` | 25 | ค่าสำรองเดิม (โหมดเจ้าหน้าที่ควบคุมไม่ปิดเซสชันเอง) |
 | `REVIEW_SECONDS` | 90 | โชว์ QR นานเท่าไหร่ |
 | `EVENT_NAME` | | ข้อความบนสตริปและจอลูกค้า |
+| `CARD_TEMPLATE` | | ไฟล์ PNG เทมเพลตการ์ด เว้นว่าง = วาดเลย์เอาต์เองตาม `PRINT_LAYOUT` |
+| `CARD_TEMPLATE_HALF` | `left` | เทมเพลตที่วางสตริปคู่กัน ให้ตัดมาใช้ครึ่งไหน: `left`/`right`/`full` |
 | `PRINT_LAYOUT` | `strip2x6` | `strip2x6` = สตริปพาสเทลแนวตั้ง, `grid4x6` = ตาราง 2x2 ธีมมืด + หัวเรืองแสง |
 | `DCC_TRANSPORT` | `remotecmd` | แนะนำ `remotecmd` สำหรับ digiCamControl 2.1.7; `webserver` มี live viewแต่อาจล้มเมื่อ socket ปิด |
 | `DCC_AUTO_START` | `true` | เปิด digiCamControl อัตโนมัติเมื่อมีการตรวจหรือสั่งกล้อง |

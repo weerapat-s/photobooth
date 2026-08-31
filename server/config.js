@@ -44,6 +44,14 @@ export const config = {
   ffmpeg: process.env.FFMPEG || String.raw`C:\Program Files (x86)\digiCamControl\ffmpeg.exe`,
   videoSeconds: num(process.env.VIDEO_SECONDS, 6),
 
+  // การ์ดแบบเทมเพลตสำเร็จรูป (PNG ที่ออกแบบไว้แล้ว) — ถ้าตั้งไว้จะใช้แทน PRINT_LAYOUT
+  cardTemplate: process.env.CARD_TEMPLATE || '',
+  // เทมเพลตที่วางสตริปคู่กันไว้ ให้ตัดมาใช้ครึ่งเดียว: left | right | full
+  cardTemplateHalf: process.env.CARD_TEMPLATE_HALF || 'left',
+  // ขยายการ์ดกี่เท่าจากขนาดไฟล์เทมเพลต — ใช้เมื่อไฟล์เทมเพลตความละเอียดต่ำ
+  // รูปถ่ายจะคมขึ้นจริง (ย่อจากต้นฉบับกล้องน้อยลง) แต่ลายกราฟิกของเทมเพลตจะซอฟต์ลงตามการอัปสเกล
+  cardTemplateScale: num(process.env.CARD_TEMPLATE_SCALE, 1),
+
   printLayout: process.env.PRINT_LAYOUT || 'strip2x6',
   printDpi: num(process.env.PRINT_DPI, 300),
   // การ์ด/ชีทปริ้นใช้แค่ช็อตล่าสุด N ภาพ (ไม่ใช่ทุกช็อตที่ถ่าย) — วิดีโอยังใช้ครบทุกช็อตเหมือนเดิม
@@ -108,6 +116,8 @@ export function saveEnv(patch) {
   if ('KIOSK_MODE' in patch) config.kioskMode = String(patch.KIOSK_MODE);
   if ('SESSION_IDLE_SECONDS' in patch) config.sessionIdleSeconds = Number(patch.SESSION_IDLE_SECONDS);
   if ('PRINT_LAYOUT' in patch) config.printLayout = String(patch.PRINT_LAYOUT);
+  if ('CARD_TEMPLATE' in patch) config.cardTemplate = String(patch.CARD_TEMPLATE);
+  if ('CARD_TEMPLATE_HALF' in patch) config.cardTemplateHalf = String(patch.CARD_TEMPLATE_HALF);
   if ('PRINT_SHOTS' in patch) config.printShots = Number(patch.PRINT_SHOTS);
   if ('PRINT_THEME_COLOR' in patch) config.printThemeColor = String(patch.PRINT_THEME_COLOR);
   if ('PRINT_FRAME_COLOR' in patch) config.printFrameColor = String(patch.PRINT_FRAME_COLOR);

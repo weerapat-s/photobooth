@@ -70,6 +70,6 @@ if ($cloudflared) {
 Write-Host ''
 Write-Host 'Core installation is complete.' -ForegroundColor Green
 Write-Host "1. Open $envFile and enter Nextcloud values."
-Write-Host '2. Install digiCamControl and connect the EOS R by USB to this Windows computer.'
+Write-Host '2. Install digiCamControl and connect your camera by USB to this Windows computer.'
 Write-Host '3. Follow README-INSTALL.txt to move or create the Cloudflare Tunnel credentials.'
 Write-Host '4. Restart Windows, then open https://booth.ienas.site on the iPad.'

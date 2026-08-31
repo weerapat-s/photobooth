@@ -19,7 +19,7 @@ let cameraStatusPending = false;
 
 const isSelfService = () => cfg.kioskMode === 'self_service';
 const isWebCamera = () => cfg.captureSource === 'web';
-// โหมด digicam ใช้กล้อง iPad เป็นกระจก/Live View เท่านั้น ส่วนไฟล์จริงยังมาจาก EOS R
+// โหมด digicam ใช้กล้อง iPad เป็นกระจก/Live View เท่านั้น ส่วนไฟล์จริงมาจากกล้อง DSLR
 const usesDevicePreview = () => isWebCamera() || (cfg.captureSource === 'digicam' && cfg.devicePreview !== false);
 const usesPairedKiosk = () => isSelfService();
 const startPath = () => usesPairedKiosk() ? '/api/web/session' : '/api/start';
@@ -44,7 +44,7 @@ function startServerLiveView() {
   if (!fallback) {
     fallback = document.createElement('img');
     fallback.id = 'server-liveview';
-    fallback.alt = 'ภาพสดจาก EOS R';
+    fallback.alt = 'ภาพสดจากกล้อง';
     video.after(fallback);
   }
   fallback.hidden = false;
@@ -191,7 +191,7 @@ async function refreshCameraStatus({ showChecking = false } = {}) {
   box.hidden = false;
   if (showChecking) {
     box.className = 'camera-ready';
-    $('camera-ready-text').textContent = 'กำลังตรวจ EOS R...';
+    $('camera-ready-text').textContent = 'กำลังตรวจกล้อง...';
   }
   try {
     const statusPath = usesPairedKiosk() ? '/api/web/camera/status' : '/api/camera/status';
@@ -200,8 +200,8 @@ async function refreshCameraStatus({ showChecking = false } = {}) {
     cameraReady = response.ok && Boolean(status.ok);
     box.className = 'camera-ready ' + (cameraReady ? 'ok' : 'bad');
     $('camera-ready-text').textContent = cameraReady
-      ? `EOS R พร้อม · ${status.transport || 'digiCamControl'}`
-      : (status.error || 'ยังไม่พบ EOS R');
+      ? `กล้องพร้อม · ${status.transport || 'digiCamControl'}`
+      : (status.error || 'ยังไม่พบกล้อง');
     if (screens.idle.hidden === false) $('btn-start').disabled = !cameraReady;
     if (cameraReady && $('idle-hint').textContent.startsWith('กล้องยังไม่พร้อม')) $('idle-hint').textContent = '';
   } catch (err) {
