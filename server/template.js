@@ -120,11 +120,24 @@ async function fitToSlot(photoPath, slot, cornerRadius, sourceMask) {
     .toBuffer();
 
   if (sourceMask) {
-    const alpha = await sharp(sourceMask.data, {
+    // ค่ามาสก์ต้องไปอยู่ใน "ช่องอัลฟา" ไม่ใช่ช่องสีเทา
+    // ถ้าส่งเป็นภาพขาวดำเฉย ๆ อัลฟาจะทึบทั้งผืน แล้ว dest-in ไม่ตัดอะไรเลย (รูปทับมาสคอตเหมือนไม่มีมาสก์)
+    // blur+linear = ขยายขอบมาสก์ออกนิดหน่อย ให้รูปลอดเข้าไปใต้ขอบมาสคอต
+    // ไม่งั้นขอบฟุ้งของมาสคอต (ไม่ขาวพอ เลยไม่นับเป็นช่อง) จะเหลือเป็นคราบขาวรอบตัว
+    const alphaRaw = await sharp(sourceMask.data, {
       raw: { width: sourceMask.width, height: sourceMask.height, channels: 1 },
     })
       .resize(slot.width, slot.height, { fit: 'fill', kernel: 'nearest' })
+      .blur(1.2)
+      .linear(2, 0)
+      // blur คืนภาพ 3 ช่อง (sRGB) ต้องบีบกลับเป็นช่องเดียว ไม่งั้น joinChannel ได้บัฟเฟอร์ยาว 3 เท่าและอ่านเพี้ยน
       .toColourspace('b-w')
+      .raw()
+      .toBuffer();
+    const alpha = await sharp({
+      create: { width: slot.width, height: slot.height, channels: 3, background: '#ffffff' },
+    })
+      .joinChannel(alphaRaw, { raw: { width: slot.width, height: slot.height, channels: 1 } })
       .png()
       .toBuffer();
     return sharp(filled)
