@@ -2,16 +2,108 @@ import fs from 'node:fs';
 import sharp from 'sharp';
 
 /**
- * รองรับการ์ดแบบ "เทมเพลตสำเร็จรูป" — ใช้ไฟล์ PNG ที่ออกแบบไว้แล้ว (พื้นหลัง โลโก้ มาสคอต ฯลฯ)
+ * รองรับการ์ดแบบ "เทมเพลตสำเร็จรูป" — ใช้ไฟล์ที่ออกแบบไว้แล้ว (พื้นหลัง โลโก้ มาสคอต ฯลฯ)
  * แล้ววางรูปถ่ายลงในช่องว่างของเทมเพลต
  *
- * ช่องรูปในเทมเพลตเป็นได้ 2 แบบ ซึ่งต้องวางรูปคนละลำดับกัน:
- *  - โปร่งใส (alpha = 0) → วางรูป "ใต้" เทมเพลต กรอบและเงาของเทมเพลตทับบนรูปได้สวย
- *  - ขาวทึบ            → วางรูป "ทับ" เทมเพลตตรงช่องนั้น (ถ้าวางใต้จะโดนพื้นขาวบัง)
+ * แต่ละช่องประกอบเป็น 2 ชั้น: รูปปูเต็มกล่องช่อง แล้ววาง "ชั้นลาย" ของเทมเพลตทับ
+ * ชั้นลายพารูปทรงและสีของกราฟิกที่ต้องอยู่หน้ารูป (มาสคอต ดาว กรอบ มุมมน) มาเอง
+ *
+ * ข้อจำกัด: ถ้าไฟล์เทมเพลตเป็นภาพแบน (ช่องเป็นสีขาวทึบ ไม่ใช่โปร่งใส) จะแยก
+ * "ขาวที่เป็นพื้นช่อง" ออกจาก "ขาวที่เป็นตัวลาย" ได้ไม่หมด เพราะข้อมูลหายไปตอนแบนภาพ
+ * โค้ดจึงเลือกทางปลอดภัย: แตะเฉพาะขอบฟุ้งแคบ ๆ รอบพื้นช่อง ลายจะไม่โดนรูปกิน
+ * แต่ปลายกราฟิกที่ออกแบบให้ไล่เฉดจนกลืนพื้นขาว (เช่นปลายแขนดาว) จะยังเห็นเป็นสีซีด
+ * ถ้าต้องการให้เป๊ะ ให้ส่งไฟล์เทมเพลตที่ช่องรูป "โปร่งใส" มาแทน แล้วผลจะถูกต้องทุกพิกเซล
  */
 
 const NEAR_WHITE = 240;
 const ALPHA_EMPTY = 16;
+
+// ขอบเขตที่ยอมให้นับเป็น "ขอบฟุ้งของพื้นช่อง": ต้องผสมพื้นขาวอยู่บ้าง
+// เข้มกว่า SHADOW_MIN = ตัวลายเต็ม ๆ / ขาวกว่า OPAQUE_WHITE = ของขาวในตัวลายเอง
+const SHADOW_MIN = 150;
+const OPAQUE_WHITE = 242;
+// ระยะที่ยอมให้ไล่ระดับออกนอกพื้นขาวของช่อง (พิกเซล ที่ความละเอียดไฟล์เทมเพลต)
+// ต้องแคบ เพราะกว้างกว่านี้จะลามเข้าไปกินของขาวในตัวมาสคอต (ชุดอวกาศ ถุงมือ หมวก)
+// ทดสอบแล้ว: 12 ขึ้นไป กำปั้นแพนด้าเริ่มโดนรูปทะลุ
+const SOFT_RADIUS = 4;
+// เผื่อขอบกล่องช่องออกไปเล็กน้อย ให้คลุมขอบฟุ้งระหว่างพื้นขาวกับกรอบส้ม
+// ไม่งั้นเหลือเป็นเส้นขาวบาง ๆ คั่นระหว่างรูปกับกรอบ
+const BOX_PAD = 6;
+
+/** ขยายมาสก์ด้วย max filter แบบแยกแกน */
+function dilate(mask, w, h, r) {
+  const tmp = Buffer.alloc(w * h);
+  const out = Buffer.alloc(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let m = 0;
+      for (let k = -r; k <= r; k++) {
+        const xx = x + k;
+        if (xx >= 0 && xx < w) { const v = mask[y * w + xx]; if (v > m) m = v; }
+      }
+      tmp[y * w + x] = m;
+    }
+  }
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let m = 0;
+      for (let k = -r; k <= r; k++) {
+        const yy = y + k;
+        if (yy >= 0 && yy < h) { const v = tmp[yy * w + x]; if (v > m) m = v; }
+      }
+      out[y * w + x] = m;
+    }
+  }
+  return out;
+}
+
+/**
+ * มาสก์ไล่ระดับของช่อง (0 = ลายทึบ, 255 = พื้นว่างให้รูปทับเต็ม)
+ *
+ * มาสก์ไบนารีตัดตรงเส้น 240 พอดี ทำให้ขอบฟุ้งของกรอบ/ลาย (ขาวราว 200-239)
+ * ไม่ถูกนับเป็นช่อง แล้วโผล่เป็นคราบขาวหยัก ๆ ข้างรูป จึงต้องไล่ระดับแทน
+ */
+function softMask(core, data, info, minX, minY, boxW, boxH) {
+  const { width, channels } = info;
+  const n = boxW * boxH;
+
+  // "ความว่าง" ของแต่ละพิกเซล = ช่องสีที่ต่ำสุด (ขาวสนิท = 255, สีลายเข้ม = ต่ำ)
+  const lum = new Uint8Array(n);
+  for (let y = 0; y < boxH; y++) {
+    for (let x = 0; x < boxW; x++) {
+      const i = ((minY + y) * width + (minX + x)) * channels;
+      lum[y * boxW + x] = channels === 4 && data[i + 3] < ALPHA_EMPTY
+        ? 255 // โปร่งใสอยู่แล้ว = ว่างเต็มที่
+        : Math.min(data[i], data[i + 1], data[i + 2]);
+    }
+  }
+
+  // ลามจากพื้นขาวของช่องออกไปตามพิกเซลที่ยังผสมพื้นขาวอยู่ = ขอบฟุ้ง
+  // คุมด้วยระยะแคบ ๆ เพราะขาวของพื้นช่องกับขาวของตัวลายแยกกันไม่ออกในภาพแบน
+  const allowed = dilate(core, boxW, boxH, SOFT_RADIUS);
+  const near = new Uint8Array(n);
+  const queue = new Int32Array(n);
+  let head = 0, tail = 0;
+  for (let o = 0; o < n; o++) if (core[o]) { near[o] = 1; queue[tail++] = o; }
+  while (head < tail) {
+    const o = queue[head++];
+    const x = o % boxW;
+    const y = (o - x) / boxW;
+    // ขาวจัด (>= OPAQUE_WHITE) ที่ไม่ได้อยู่ในพื้นช่อง คือของขาวในตัวลายเอง — ห้ามลามเข้า
+    const push = (p) => { if (!near[p] && allowed[p] && lum[p] > SHADOW_MIN && lum[p] < OPAQUE_WHITE) { near[p] = 1; queue[tail++] = p; } };
+    if (x > 0) push(o - 1);
+    if (x < boxW - 1) push(o + 1);
+    if (y > 0) push(o - boxW);
+    if (y < boxH - 1) push(o + boxW);
+  }
+
+  const out = Buffer.alloc(n, 0);
+  // สูตรถอดพื้นขาว: พิกเซลในไฟล์คือสีลายผสมพื้นขาว T = a*S + (1-a)*255
+  // ถ้าสีลายจริงเข้ม (min ใกล้ 0) จะได้ a = 1 - min(T)/255 พอดี
+  // ฉะนั้น "ความว่าง" ที่ให้รูปทับ = min(T) ตรง ๆ ไม่ต้องตั้งเกณฑ์เอง
+  for (let o = 0; o < n; o++) if (near[o]) out[o] = lum[o];
+  return out;
+}
 
 /** พิกเซลนี้ถือเป็น "ช่องว่างสำหรับใส่รูป" ไหม */
 function isSlotPixel(data, idx, channels) {
@@ -71,20 +163,31 @@ export async function detectSlots(templatePath, { minAreaRatio = 0.004, minFillR
     }
 
     if (area < minArea) continue;
-    const boxW = maxX - minX + 1;
-    const boxH = maxY - minY + 1;
-    // ต้องเป็นสี่เหลี่ยมจริง ๆ ไม่ใช่รูปทรงอิสระ (ตัวหนังสือขาว/ดาวขาวจะตกรอบนี้ไป)
-    if (area / (boxW * boxH) < minFillRatio) continue;
-
+    if (area / ((maxX - minX + 1) * (maxY - minY + 1)) < minFillRatio) continue;
+    const padX0 = Math.max(0, minX - BOX_PAD);
+    const padY0 = Math.max(0, minY - BOX_PAD);
+    const padX1 = Math.min(width - 1, maxX + BOX_PAD);
+    const padY1 = Math.min(height - 1, maxY + BOX_PAD);
+    const boxW = padX1 - padX0 + 1;
+    const boxH = padY1 - padY0 + 1;
     // เก็บรูปทรงจริงของช่องไว้เป็นมาสก์ ไม่ใช่แค่กรอบสี่เหลี่ยม
     // เพราะมาสคอต/ดาวที่ล้ำเข้ามาในกรอบไม่ใช่พิกเซลขาว จะได้ไม่โดนรูปทับ
-    const mask = Buffer.alloc(boxW * boxH, 0);
+    const core = Buffer.alloc(boxW * boxH, 0);
     for (const pixel of members) {
       const x = pixel % width;
       const y = (pixel - x) / width;
-      mask[(y - minY) * boxW + (x - minX)] = 255;
+      core[(y - padY0) * boxW + (x - padX0)] = 255;
     }
-    slots.push({ left: minX, top: minY, width: boxW, height: boxH, mask });
+    const mask = softMask(core, data, info, padX0, padY0, boxW, boxH);
+    slots.push({
+      left: padX0,
+      top: padY0,
+      width: boxW,
+      height: boxH,
+      mask,
+      radius: cornerRadiusOf(core, boxW, boxH),
+      ink: inkLayer(mask, data, info, padX0, padY0, boxW, boxH),
+    });
   }
 
   // เรียงบนลงล่าง ซ้ายไปขวา เหมือนลำดับที่คนอ่าน
@@ -104,6 +207,56 @@ export async function detectSlots(templatePath, { minAreaRatio = 0.004, minFillR
   return { width, height, hasAlpha: Boolean(meta.hasAlpha), slotsTransparent, slots };
 }
 
+/** เดารัศมีมุมมนของช่อง จากระยะที่พื้นขาวเว้นจากมุมกล่อง
+ *  ใช้ค่าต่ำสุดจาก 8 ด้าน เพราะลายที่บังมุมดันค่าให้สูงเกินจริงได้ทางเดียว */
+function cornerRadiusOf(core, w, h) {
+  const scanRow = (y, fromLeft) => {
+    for (let i = 0; i < w; i++) if (core[y * w + (fromLeft ? i : w - 1 - i)]) return i;
+    return -1;
+  };
+  const scanCol = (x, fromTop) => {
+    for (let i = 0; i < h; i++) if (core[(fromTop ? i : h - 1 - i) * w + x]) return i;
+    return -1;
+  };
+  const est = [
+    scanRow(0, true), scanRow(0, false), scanRow(h - 1, true), scanRow(h - 1, false),
+    scanCol(0, true), scanCol(0, false), scanCol(w - 1, true), scanCol(w - 1, false),
+  ].filter((v) => v >= 0);
+  return est.length ? Math.min(...est) : 0;
+}
+
+/**
+ * ชั้น "ลาย" ของช่อง = กราฟิกที่ต้องอยู่หน้ารูป (มาสคอต ดาว กรอบ)
+ *
+ * ถอนพื้นขาวออกจากสีก่อน (unpremultiply) เพราะพิกเซลขอบฟุ้งในไฟล์เทมเพลตคือ
+ * สีลายผสมพื้นขาวมาแล้ว ถ้าเอาไปวางทับรูปตรง ๆ จะได้ฝ้าซีด ๆ ตามขอบลาย
+ * T = a*S + (1-a)*ขาว  =>  S = (T - 255*(1-a)) / a
+ */
+function inkLayer(soft, data, info, minX, minY, boxW, boxH) {
+  const { width, channels } = info;
+  const out = Buffer.alloc(boxW * boxH * 4);
+  for (let y = 0; y < boxH; y++) {
+    for (let x = 0; x < boxW; x++) {
+      const o = y * boxW + x;
+      const oo = o * 4;
+      const a = 255 - soft[o];
+      if (a <= 0) continue; // ช่องว่างล้วน ปล่อยโปร่งใสให้เห็นรูป
+      const i = ((minY + y) * width + (minX + x)) * channels;
+      out[oo + 3] = a;
+      if (a >= 255) {
+        out[oo] = data[i]; out[oo + 1] = data[i + 1]; out[oo + 2] = data[i + 2];
+        continue;
+      }
+      const f = a / 255;
+      for (let c = 0; c < 3; c++) {
+        const v = (data[i + c] - 255 * (1 - f)) / f;
+        out[oo + c] = v < 0 ? 0 : v > 255 ? 255 : Math.round(v);
+      }
+    }
+  }
+  return out;
+}
+
 const roundedMask = (w, h, r) =>
   Buffer.from(`<svg width="${w}" height="${h}"><rect width="${w}" height="${h}" rx="${r}" ry="${r}" fill="#fff"/></svg>`);
 
@@ -112,39 +265,12 @@ const roundedMask = (w, h, r) =>
  * ถ้ามีมาสก์จากเทมเพลต ใช้มาสก์นั้น (ได้มุมโค้งตามกรอบจริง และเว้นที่ให้มาสคอต/ดาวที่ล้ำเข้ามา)
  * ถ้าไม่มี ค่อยมนมุมด้วยรัศมีประมาณ
  */
-async function fitToSlot(photoPath, slot, cornerRadius, sourceMask) {
+async function fitToSlot(photoPath, slot, cornerRadius) {
   const filled = await sharp(photoPath)
     .rotate()
     .resize(slot.width, slot.height, { fit: 'cover', position: 'attention' })
     .png()
     .toBuffer();
-
-  if (sourceMask) {
-    // ค่ามาสก์ต้องไปอยู่ใน "ช่องอัลฟา" ไม่ใช่ช่องสีเทา
-    // ถ้าส่งเป็นภาพขาวดำเฉย ๆ อัลฟาจะทึบทั้งผืน แล้ว dest-in ไม่ตัดอะไรเลย (รูปทับมาสคอตเหมือนไม่มีมาสก์)
-    // blur+linear = ขยายขอบมาสก์ออกนิดหน่อย ให้รูปลอดเข้าไปใต้ขอบมาสคอต
-    // ไม่งั้นขอบฟุ้งของมาสคอต (ไม่ขาวพอ เลยไม่นับเป็นช่อง) จะเหลือเป็นคราบขาวรอบตัว
-    const alphaRaw = await sharp(sourceMask.data, {
-      raw: { width: sourceMask.width, height: sourceMask.height, channels: 1 },
-    })
-      .resize(slot.width, slot.height, { fit: 'fill', kernel: 'nearest' })
-      .blur(1.2)
-      .linear(2, 0)
-      // blur คืนภาพ 3 ช่อง (sRGB) ต้องบีบกลับเป็นช่องเดียว ไม่งั้น joinChannel ได้บัฟเฟอร์ยาว 3 เท่าและอ่านเพี้ยน
-      .toColourspace('b-w')
-      .raw()
-      .toBuffer();
-    const alpha = await sharp({
-      create: { width: slot.width, height: slot.height, channels: 3, background: '#ffffff' },
-    })
-      .joinChannel(alphaRaw, { raw: { width: slot.width, height: slot.height, channels: 1 } })
-      .png()
-      .toBuffer();
-    return sharp(filled)
-      .composite([{ input: alpha, blend: 'dest-in' }])
-      .png()
-      .toBuffer();
-  }
 
   if (!cornerRadius) return filled;
   return sharp(filled)
@@ -169,17 +295,27 @@ export async function renderTemplateCard(photos, template, templatePath, { corne
   const layers = [];
   for (let i = 0; i < slots.length && i < photos.length; i++) {
     const slot = slots[i];
-    const radius = Math.round(Math.min(slot.width, slot.height) * cornerRadiusRatio);
-    // มาสก์เก็บไว้ที่ความละเอียดไฟล์ต้นฉบับ (template.slots) ส่วน slot อาจถูกขยายแล้ว
+    // มาสก์/ลาย เก็บไว้ที่ความละเอียดไฟล์ต้นฉบับ (template.slots) ส่วน slot อาจถูกขยายแล้ว
     const source = template.slots[i];
-    const sourceMask = source?.mask
-      ? { data: source.mask, width: source.width, height: source.height }
-      : null;
-    layers.push({
-      input: await fitToSlot(photos[i], slot, radius, sourceMask),
-      left: slot.left,
-      top: slot.top,
-    });
+    const grow = source ? slot.width / source.width : 1;
+    const radius = source?.radius
+      ? Math.round(source.radius * grow)
+      : Math.round(Math.min(slot.width, slot.height) * cornerRadiusRatio);
+
+    // มีชั้นลาย = รูปปูเต็มกล่องได้เลย ไม่ต้องมนมุมเอง เพราะชั้นลายทึบนอกพื้นขาวอยู่แล้ว
+    // จะได้ไม่เหลือเส้นขาวคั่นระหว่างขอบรูปกับกรอบ
+    const shaped = source?.ink ? 0 : radius;
+    layers.push({ input: await fitToSlot(photos[i], slot, shaped), left: slot.left, top: slot.top });
+
+    if (source?.ink) {
+      const ink = await sharp(source.ink, {
+        raw: { width: source.width, height: source.height, channels: 4 },
+      })
+        .resize(slot.width, slot.height, { fit: 'fill', kernel: 'cubic' })
+        .png()
+        .toBuffer();
+      layers.push({ input: ink, left: slot.left, top: slot.top });
+    }
   }
 
   // ถ้าตัดครึ่งเทมเพลตมาใช้ ต้องครอปไฟล์เทมเพลตตามด้วย ไม่งั้นขนาดไม่ตรงผืนและภาพพื้นหลังเลื่อน
@@ -196,10 +332,9 @@ export async function renderTemplateCard(photos, template, templatePath, { corne
   if (factor !== 1) templateImage = templateImage.resize(width, height, { kernel: 'lanczos3' });
   const templateBuf = await templateImage.png().toBuffer();
 
-  // ช่องโปร่งใส → รูปอยู่ล่าง เทมเพลตทับบน; ช่องขาวทึบ → เทมเพลตอยู่ล่าง รูปทับช่องขาว
-  const ordered = slotsTransparent
-    ? [...layers, { input: templateBuf, left: 0, top: 0 }]
-    : [{ input: templateBuf, left: 0, top: 0 }, ...layers];
+  // เทมเพลตเป็นฐานเสมอ แล้ววางรูป+ชั้นลายของแต่ละช่องทับ
+  // (ชั้นลายพารูปทรง/สีของกราฟิกที่ต้องอยู่หน้ารูปมาเองแล้ว ไม่ต้องสลับลำดับตามชนิดช่อง)
+  const ordered = [{ input: templateBuf, left: 0, top: 0 }, ...layers];
 
   return sharp({ create: { width, height, channels: 3, background: '#000000' } })
     .composite(ordered)
