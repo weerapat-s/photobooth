@@ -22,13 +22,44 @@ const ALPHA_EMPTY = 16;
 // เข้มกว่า SHADOW_MIN = ตัวลายเต็ม ๆ / ขาวกว่า OPAQUE_WHITE = ของขาวในตัวลายเอง
 const SHADOW_MIN = 150;
 const OPAQUE_WHITE = 242;
-// ระยะที่ยอมให้ไล่ระดับออกนอกพื้นขาวของช่อง (พิกเซล ที่ความละเอียดไฟล์เทมเพลต)
-// ต้องแคบ เพราะกว้างกว่านี้จะลามเข้าไปกินของขาวในตัวมาสคอต (ชุดอวกาศ ถุงมือ หมวก)
-// ทดสอบแล้ว: 12 ขึ้นไป กำปั้นแพนด้าเริ่มโดนรูปทะลุ
+// ลายที่ล้ำเข้ามาในช่องกินพื้นที่เกินสัดส่วนนี้ถือเป็น "ตัวละคร" = ห้ามให้รูปทับเด็ดขาด
+// ต่ำกว่านั้นถือเป็นของประดับ (ดาว/เงา) ซึ่งปลายไล่เฉดจนกลืนพื้นขาว จึงถอดพื้นขาวออกได้
+// วัดจากไฟล์จริง: มาสคอตกิน 3.3-5.5% ของพื้นช่อง ดาวกิน 1.5-1.9% — เกณฑ์อยู่กลางช่องว่าง
+// แยกด้วยความสว่างไม่ได้ เพราะชุดขาวของมาสคอตกับแสงฟุ้งของดาวสว่างพอ ๆ กัน
+const CHARACTER_AREA_RATIO = 0.025;
+// รัศมีตัดคอคอดของพื้นช่อง ต้องแคบกว่ามุมมนของช่อง (ราว 18 px) ไม่งั้นมุมจะโดนกินไปด้วย
+const LEAK_PRUNE = 12;
+// แถบขอบแคบ ๆ รอบพื้นช่องที่ไล่ระดับเสมอ ไม่ว่าลายตรงนั้นจะเป็นอะไร
+// มีไว้กันเส้นขาวคั่นระหว่างรูปกับกรอบ และใช้กันไม่ให้ลายทุกชิ้นเชื่อมเป็นก้อนเดียวตอนแยกก้อน
+// ต้องแคบ เพราะกว้างกว่านี้จะกินเข้าไปในตัวมาสคอต (ทดสอบแล้ว: 12 ขึ้นไป กำปั้นแพนด้าทะลุ)
 const SOFT_RADIUS = 4;
 // เผื่อขอบกล่องช่องออกไปเล็กน้อย ให้คลุมขอบฟุ้งระหว่างพื้นขาวกับกรอบส้ม
 // ไม่งั้นเหลือเป็นเส้นขาวบาง ๆ คั่นระหว่างรูปกับกรอบ
 const BOX_PAD = 6;
+
+/** หดมาสก์ด้วย min filter แบบแยกแกน */
+function erode(mask, w, h, r) {
+  const inv = Buffer.alloc(w * h);
+  for (let o = 0; o < w * h; o++) inv[o] = mask[o] ? 0 : 255;
+  const grown = dilate(inv, w, h, r);
+  const out = Buffer.alloc(w * h);
+  for (let o = 0; o < w * h; o++) out[o] = grown[o] ? 0 : 255;
+  return out;
+}
+
+/**
+ * ตัด "คอคอด" ออกจากพื้นช่อง (opening = หดแล้วขยายกลับ)
+ *
+ * flood fill หาพื้นช่องเล็ดลอดเข้าไปในของขาวของตัวลายได้ ถ้าจุดสัมผัสเป็นขาวชนขาว
+ * (เจอกับชุดอวกาศสีขาวของแพนด้า) ทำให้ชุดบางส่วนถูกนับเป็นพื้นช่อง แล้วโดนรูปทับ
+ * ทางเชื่อมพวกนี้แคบกว่าตัวช่องมาก หดเข้าแล้วขยายกลับจึงขาดออกไป ส่วนตัวช่องคงเดิม
+ */
+function pruneLeaks(core, w, h, r) {
+  const opened = dilate(erode(core, w, h, r), w, h, r);
+  const out = Buffer.alloc(w * h);
+  for (let o = 0; o < w * h; o++) out[o] = core[o] && opened[o] ? 255 : 0;
+  return out;
+}
 
 /** ขยายมาสก์ด้วย max filter แบบแยกแกน */
 function dilate(mask, w, h, r) {
@@ -63,7 +94,7 @@ function dilate(mask, w, h, r) {
  * มาสก์ไบนารีตัดตรงเส้น 240 พอดี ทำให้ขอบฟุ้งของกรอบ/ลาย (ขาวราว 200-239)
  * ไม่ถูกนับเป็นช่อง แล้วโผล่เป็นคราบขาวหยัก ๆ ข้างรูป จึงต้องไล่ระดับแทน
  */
-function softMask(core, data, info, minX, minY, boxW, boxH) {
+function softMask(core, radius, data, info, minX, minY, boxW, boxH) {
   const { width, channels } = info;
   const n = boxW * boxH;
 
@@ -78,30 +109,73 @@ function softMask(core, data, info, minX, minY, boxW, boxH) {
     }
   }
 
-  // ลามจากพื้นขาวของช่องออกไปตามพิกเซลที่ยังผสมพื้นขาวอยู่ = ขอบฟุ้ง
-  // คุมด้วยระยะแคบ ๆ เพราะขาวของพื้นช่องกับขาวของตัวลายแยกกันไม่ออกในภาพแบน
-  const allowed = dilate(core, boxW, boxH, SOFT_RADIUS);
-  const near = new Uint8Array(n);
-  const queue = new Int32Array(n);
-  let head = 0, tail = 0;
-  for (let o = 0; o < n; o++) if (core[o]) { near[o] = 1; queue[tail++] = o; }
-  while (head < tail) {
-    const o = queue[head++];
-    const x = o % boxW;
-    const y = (o - x) / boxW;
-    // ขาวจัด (>= OPAQUE_WHITE) ที่ไม่ได้อยู่ในพื้นช่อง คือของขาวในตัวลายเอง — ห้ามลามเข้า
-    const push = (p) => { if (!near[p] && allowed[p] && lum[p] > SHADOW_MIN && lum[p] < OPAQUE_WHITE) { near[p] = 1; queue[tail++] = p; } };
-    if (x > 0) push(o - 1);
-    if (x < boxW - 1) push(o + 1);
-    if (y > 0) push(o - boxW);
-    if (y < boxH - 1) push(o + boxW);
+  // ผืนของช่อง = สี่เหลี่ยมมุมมนที่ครอบพื้นขาว ใช้ตัดสินว่าลายชิ้นไหน "ล้ำเข้ามาในช่อง"
+  const slotArea = slotAreaMask(core, radius, boxW, boxH);
+
+  // แยกลายที่ล้ำเข้ามาในช่องออกเป็นก้อน ๆ แล้วตัดสินทีละก้อนว่าเป็นตัวละครหรือของประดับ
+  // ไม่นับแถบขอบแคบ ๆ ที่พาดรอบช่องเข้าไปด้วย ไม่งั้นลายทุกชิ้นเชื่อมถึงกันเป็นก้อนเดียว
+  const rim = dilate(core, boxW, boxH, SOFT_RADIUS);
+  let coreArea = 0;
+  for (let o = 0; o < n; o++) if (core[o]) coreArea++;
+  const solid = new Uint8Array(n); // 1 = ก้อนลายที่ห้ามให้รูปทับ
+  const seen = new Uint8Array(n);
+  const stack = new Int32Array(n);
+  for (let start = 0; start < n; start++) {
+    if (seen[start] || core[start] || !slotArea[start] || rim[start]) continue;
+    let top = 0;
+    stack[top++] = start;
+    seen[start] = 1;
+    const members = [];
+    while (top > 0) {
+      const o = stack[--top];
+      members.push(o);
+      const x = o % boxW;
+      const y = (o - x) / boxW;
+      const push = (p) => { if (!seen[p] && !core[p] && slotArea[p] && !rim[p]) { seen[p] = 1; stack[top++] = p; } };
+      if (x > 0) push(o - 1);
+      if (x < boxW - 1) push(o + 1);
+      if (y > 0) push(o - boxW);
+      if (y < boxH - 1) push(o + boxW);
+    }
+    if (members.length >= coreArea * CHARACTER_AREA_RATIO) {
+      for (const o of members) solid[o] = 1;
+    }
   }
 
   const out = Buffer.alloc(n, 0);
   // สูตรถอดพื้นขาว: พิกเซลในไฟล์คือสีลายผสมพื้นขาว T = a*S + (1-a)*255
   // ถ้าสีลายจริงเข้ม (min ใกล้ 0) จะได้ a = 1 - min(T)/255 พอดี
-  // ฉะนั้น "ความว่าง" ที่ให้รูปทับ = min(T) ตรง ๆ ไม่ต้องตั้งเกณฑ์เอง
-  for (let o = 0; o < n; o++) if (near[o]) out[o] = lum[o];
+  // ฉะนั้น "ความว่าง" ที่ให้รูปทับ = min(T) ตรง ๆ
+  for (let o = 0; o < n; o++) {
+    if (core[o]) { out[o] = 255; continue; }
+    if (lum[o] <= SHADOW_MIN) continue; // เข้มจัด = ลายเต็มตัว
+    if (rim[o] || (slotArea[o] && !solid[o])) out[o] = lum[o];
+  }
+  return out;
+}
+
+/** สี่เหลี่ยมมุมมนที่ครอบพื้นขาวของช่อง */
+function slotAreaMask(core, radius, boxW, boxH) {
+  let minX = boxW, maxX = -1, minY = boxH, maxY = -1;
+  for (let y = 0; y < boxH; y++) {
+    for (let x = 0; x < boxW; x++) {
+      if (!core[y * boxW + x]) continue;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+  const out = new Uint8Array(boxW * boxH);
+  if (maxX < 0) return out;
+  const r = Math.max(0, radius);
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      const dx = x < minX + r ? minX + r - x : x > maxX - r ? x - (maxX - r) : 0;
+      const dy = y < minY + r ? minY + r - y : y > maxY - r ? y - (maxY - r) : 0;
+      if (dx * dx + dy * dy <= r * r) out[y * boxW + x] = 1;
+    }
+  }
   return out;
 }
 
@@ -178,14 +252,16 @@ export async function detectSlots(templatePath, { minAreaRatio = 0.004, minFillR
       const y = (pixel - x) / width;
       core[(y - padY0) * boxW + (x - padX0)] = 255;
     }
-    const mask = softMask(core, data, info, padX0, padY0, boxW, boxH);
+    const pruned = pruneLeaks(core, boxW, boxH, LEAK_PRUNE);
+    const radius = cornerRadiusOf(pruned, boxW, boxH);
+    const mask = softMask(pruned, radius, data, info, padX0, padY0, boxW, boxH);
     slots.push({
       left: padX0,
       top: padY0,
       width: boxW,
       height: boxH,
       mask,
-      radius: cornerRadiusOf(core, boxW, boxH),
+      radius,
       ink: inkLayer(mask, data, info, padX0, padY0, boxW, boxH),
     });
   }
@@ -210,17 +286,28 @@ export async function detectSlots(templatePath, { minAreaRatio = 0.004, minFillR
 /** เดารัศมีมุมมนของช่อง จากระยะที่พื้นขาวเว้นจากมุมกล่อง
  *  ใช้ค่าต่ำสุดจาก 8 ด้าน เพราะลายที่บังมุมดันค่าให้สูงเกินจริงได้ทางเดียว */
 function cornerRadiusOf(core, w, h) {
+  let minX = w, maxX = -1, minY = h, maxY = -1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (!core[y * w + x]) continue;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+  if (maxX < 0) return 0;
   const scanRow = (y, fromLeft) => {
-    for (let i = 0; i < w; i++) if (core[y * w + (fromLeft ? i : w - 1 - i)]) return i;
+    for (let i = 0; i <= maxX - minX; i++) if (core[y * w + (fromLeft ? minX + i : maxX - i)]) return i;
     return -1;
   };
   const scanCol = (x, fromTop) => {
-    for (let i = 0; i < h; i++) if (core[(fromTop ? i : h - 1 - i) * w + x]) return i;
+    for (let i = 0; i <= maxY - minY; i++) if (core[(fromTop ? minY + i : maxY - i) * w + x]) return i;
     return -1;
   };
   const est = [
-    scanRow(0, true), scanRow(0, false), scanRow(h - 1, true), scanRow(h - 1, false),
-    scanCol(0, true), scanCol(0, false), scanCol(w - 1, true), scanCol(w - 1, false),
+    scanRow(minY, true), scanRow(minY, false), scanRow(maxY, true), scanRow(maxY, false),
+    scanCol(minX, true), scanCol(minX, false), scanCol(maxX, true), scanCol(maxX, false),
   ].filter((v) => v >= 0);
   return est.length ? Math.min(...est) : 0;
 }
