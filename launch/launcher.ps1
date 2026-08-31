@@ -65,8 +65,12 @@ function Show-Error([string]$text) {
   [System.Windows.Forms.MessageBox]::Show($text, $title, "OK", "Error") | Out-Null
 }
 
-# หา node
-$node = (Get-Command node -ErrorAction SilentlyContinue).Source
+# หา node — ตัวที่มากับชุดติดตั้งมาก่อนเสมอ เพราะรู้แน่ว่าเข้ากับ node_modules ที่แถมมา
+# และทำให้เครื่องที่ไม่เคยลง Node.js ใช้งานได้เลย
+$node = $null
+$bundledNode = Join-Path $root "runtime\node.exe"
+if (Test-Path -LiteralPath $bundledNode) { $node = $bundledNode }
+if (-not $node) { $node = (Get-Command node -ErrorAction SilentlyContinue).Source }
 if (-not $node) {
   foreach ($candidate in @("$env:ProgramFiles\nodejs\node.exe", "${env:ProgramFiles(x86)}\nodejs\node.exe")) {
     if (Test-Path -LiteralPath $candidate) { $node = $candidate; break }

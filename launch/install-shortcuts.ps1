@@ -31,7 +31,11 @@ if ($Uninstall) {
 # สร้างไอคอนถ้ายังไม่มี
 $iconDir = Join-Path $root "assets\icons"
 if (-not (Test-Path -LiteralPath (Join-Path $iconDir "booth.ico"))) {
-  $node = (Get-Command node -ErrorAction SilentlyContinue).Source
+  # ตัวที่มากับชุดติดตั้งมาก่อน เครื่องที่ไม่เคยลง Node.js จะได้มีไอคอนเหมือนกัน
+  $node = $null
+  $bundledNode = Join-Path $root "runtime\node.exe"
+  if (Test-Path -LiteralPath $bundledNode) { $node = $bundledNode }
+  if (-not $node) { $node = (Get-Command node -ErrorAction SilentlyContinue).Source }
   if ($node) {
     Start-Process -FilePath $node -ArgumentList "`"$(Join-Path $here 'make-icons.js')`"" -WorkingDirectory $root -Wait -WindowStyle Hidden
   }

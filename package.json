@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node server/index.js",
-    "pack-photobooth": "node launch/pack-photobooth.js",
+    "build-installer": "node launch/build-installer.js",
     "icons": "node launch/make-icons.js",
     "install-shortcuts": "powershell -NoProfile -ExecutionPolicy Bypass -File launch/install-shortcuts.ps1",
     "uninstall-shortcuts": "powershell -NoProfile -ExecutionPolicy Bypass -File launch/install-shortcuts.ps1 -Uninstall",
