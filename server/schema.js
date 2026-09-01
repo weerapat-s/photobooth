@@ -79,6 +79,12 @@ export function validateConfigPatch(patch) {
         }
         break;
       }
+      case 'SHUTTER': {
+        if (!['software', 'manual'].includes(strVal)) {
+          errors.push(`SHUTTER ต้องเป็น 'software' หรือ 'manual' (ได้รับ: ${val})`);
+        }
+        break;
+      }
       case 'CARD_LAYOUT_CHOICE': {
         if (!['fixed', 'customer'].includes(strVal)) {
           errors.push(`CARD_LAYOUT_CHOICE ต้องเป็น 'fixed' หรือ 'customer' (ได้รับ: ${val})`);

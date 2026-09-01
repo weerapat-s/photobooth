@@ -139,6 +139,13 @@
     <input id="in-watch" placeholder="เช่น D:\งานรับน้อง\Capture">
     <div class="browser" id="browser"></div>
 
+    <label>ใครกดชัตเตอร์</label>
+    <select id="in-shutter">
+      <option value="software">โปรแกรมสั่งกล้องถ่ายให้</option>
+      <option value="manual">เจ้าหน้าที่กดที่ตัวกล้องเอง</option>
+    </select>
+    <p class="hint">โหมดเจ้าหน้าที่กดเอง: โปรแกรมจะเฝ้าโฟลเดอร์ของเซสชัน ภาพที่กล้องส่งลงมาจะเข้าช่องว่างเรียงกันเอง (ใช้ได้กับ digicam เท่านั้น)</p>
+
     <label>จำนวนช็อตต่อเซสชัน</label>
     <input id="in-shots" type="number" min="1" max="8">
 
@@ -289,6 +296,7 @@ async function loadConfig() {
   $('in-kiosk-mode').value = c.kioskMode || 'operator';
   $('in-source').value = c.captureSource;
   $('in-countdown').value = c.countdown;
+  $('in-shutter').value = c.shutterMode || 'software';
   $('in-web-facing').value = c.webCameraFacing || 'user';
   $('in-web-mirror').value = String(c.webMirror ?? true);
   $('in-watch').value = c.watchDir || '';
@@ -423,6 +431,7 @@ $('btn-save').onclick = async () => {
         KIOSK_MODE: $('in-kiosk-mode').value,
         CAPTURE_SOURCE: $('in-source').value,
         COUNTDOWN: Number($('in-countdown').value),
+        SHUTTER: $('in-shutter').value,
         WEB_CAMERA_FACING: $('in-web-facing').value,
         WEB_MIRROR: $('in-web-mirror').value,
         WATCH_DIR: $('in-watch').value.trim(),

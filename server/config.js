@@ -32,6 +32,9 @@ export const config = {
   watchPolling: bool(process.env.WATCH_POLLING, false),
 
   countdown: num(process.env.COUNTDOWN, 3),
+  // ใครเป็นคนสั่งชัตเตอร์: software = โปรแกรมสั่งกล้องถ่าย | manual = เจ้าหน้าที่กดที่ตัวกล้องเอง
+  // โหมด manual โปรแกรมจะเฝ้าโฟลเดอร์ของเซสชันแทน ไฟล์ที่กล้องส่งลงมาจะเข้าช่องว่างเอง
+  shutterMode: process.env.SHUTTER || 'software',
   shotGapSeconds: num(process.env.SHOT_GAP_SECONDS, 1.5),
   // remotecmd เสถียรกว่า webserver ของ digiCamControl 2.1.7 ซึ่งอาจล้มเมื่อ client ตัด socket
   dccTransport: process.env.DCC_TRANSPORT || 'remotecmd',
@@ -101,6 +104,7 @@ const runtimeCheck = validateConfigPatch({
   PRINT_LAYOUT: config.printLayout,
   CAPTURE_SOURCE: config.captureSource,
   KIOSK_MODE: config.kioskMode,
+  SHUTTER: config.shutterMode,
   CARD_LAYOUT_CHOICE: config.cardLayoutChoice,
   WEB_CAMERA_FACING: config.webCameraFacing,
   WEB_MIRROR: config.webMirror,
@@ -137,4 +141,5 @@ export function saveEnv(patch) {
   if ('WEB_CAMERA_FACING' in patch) config.webCameraFacing = String(patch.WEB_CAMERA_FACING);
   if ('WEB_MIRROR' in patch) config.webMirror = String(patch.WEB_MIRROR).toLowerCase() === 'true';
   if ('COUNTDOWN' in patch) config.countdown = Number(patch.COUNTDOWN);
+  if ('SHUTTER' in patch) config.shutterMode = String(patch.SHUTTER);
 }

@@ -131,6 +131,7 @@ app.get('/api/web/bootstrap', requireWebKiosk, (req, res) => {
     config: {
       shots: config.shots,
       countdown: config.countdown,
+      shutterMode: config.shutterMode,
       eventName: config.eventName,
       reviewSeconds: config.reviewSeconds,
       cameraFacing: config.webCameraFacing,
@@ -168,6 +169,15 @@ app.put('/api/web/session/photo/:slot', requireWebKiosk,
       res.status(400).json({ ok: false, error: err.message });
     }
   });
+
+app.delete('/api/web/session/photo/:slot', requireWebKiosk, async (req, res) => {
+  try {
+    await deletePhoto(req.params.slot);
+    res.json({ ok: true, state: snapshot() });
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err.message });
+  }
+});
 
 app.post('/api/web/capture', requireWebKiosk, async (req, res) => {
   if (config.captureSource === 'web' || config.captureSource === 'ipad') {
@@ -236,6 +246,7 @@ app.get('/api/ipad/bootstrap', requireIpadToken, (req, res) => {
     config: {
       shots: config.shots,
       countdown: config.countdown,
+      shutterMode: config.shutterMode,
       eventName: config.eventName,
       reviewSeconds: config.reviewSeconds,
     },
@@ -351,6 +362,7 @@ app.get('/api/config', (req, res) => {
     captureSource: config.captureSource,
     kioskMode: config.kioskMode,
     countdown: config.countdown,
+    shutterMode: config.shutterMode,
     webCameraFacing: config.webCameraFacing,
     webMirror: config.webMirror,
     cameraFacing: config.webCameraFacing,
@@ -518,7 +530,7 @@ app.post('/api/mock-shot', blockLegacyMutationInIpadMode, async (req, res) => {
 /** เปลี่ยนค่าตั้งต้นจากหน้า operator แล้วเขียนกลับ .env */
 app.post('/api/settings', blockLegacyMutationInIpadMode, (req, res) => {
   try {
-    const allowed = ['WATCH_DIR', 'SHOTS', 'PRINT_SHOTS', 'EVENT_NAME', 'SESSION_IDLE_SECONDS', 'PRINT_LAYOUT', 'PRINT_THEME_COLOR', 'REVIEW_SECONDS', 'CAPTURE_SOURCE', 'COUNTDOWN', 'KIOSK_MODE', 'WEB_CAMERA_FACING', 'WEB_MIRROR', 'CARD_LAYOUT', 'CARD_LAYOUT_CHOICE'];
+    const allowed = ['WATCH_DIR', 'SHOTS', 'PRINT_SHOTS', 'EVENT_NAME', 'SESSION_IDLE_SECONDS', 'PRINT_LAYOUT', 'PRINT_THEME_COLOR', 'REVIEW_SECONDS', 'CAPTURE_SOURCE', 'COUNTDOWN', 'KIOSK_MODE', 'WEB_CAMERA_FACING', 'WEB_MIRROR', 'CARD_LAYOUT', 'CARD_LAYOUT_CHOICE', 'SHUTTER'];
     const patch = {};
     for (const key of allowed) {
       if (req.body && req.body[key] !== undefined && req.body[key] !== null) patch[key] = req.body[key];

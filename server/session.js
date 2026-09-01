@@ -4,7 +4,7 @@ import { EventEmitter } from 'node:events';
 import QRCode from 'qrcode';
 import { config } from './config.js';
 import { camera } from './camera.js';
-import { watcher, mockShot } from './watcher.js';
+import { watcher, mockShot, start as startWatch, stop as stopWatch } from './watcher.js';
 import { composeCard, makePreview } from './compose.js';
 import { resolveLayout } from './layouts.js';
 import { makeVideoFromFrames } from './video.js';
@@ -208,6 +208,11 @@ async function handlePhoto(file, requestedSlot = null) {
   armIdleTimer();
 }
 
+/** โปรแกรมไม่สั่งชัตเตอร์ ให้เจ้าหน้าที่กดที่ตัวกล้องเอง (ใช้ได้เฉพาะโหมดที่กล้องส่งไฟล์ลงโฟลเดอร์) */
+function manualShutter() {
+  return config.shutterMode === 'manual' && config.captureSource === 'digicam';
+}
+
 function addPhoto(file, slotIndex = null) {
   const task = photoQueue.then(() => handlePhoto(file, slotIndex));
   photoQueue = task.catch(() => {});
@@ -231,8 +236,14 @@ export async function startSession({ layout } = {}) {
   const chosen = resolveLayout(layout);
   const s = await beginSession(chosen?.id || null);
   try {
+    await fsp.mkdir(s.rawDir, { recursive: true });
     if (config.captureSource === 'digicam') await camera.setSessionFolder(s.rawDir);
-    else await fsp.mkdir(s.rawDir, { recursive: true });
+    // ชัตเตอร์มือ: ไม่สั่งกล้อง แต่ไปเฝ้าโฟลเดอร์ของเซสชันแทน
+    // ไฟล์ที่กล้องส่งลงมาตอนเจ้าหน้าที่กดชัตเตอร์จะเข้าช่องว่างเองผ่าน watcher
+    if (manualShutter()) {
+      const watching = startWatch(s.rawDir);
+      if (!watching.ok) throw new Error(`เฝ้าโฟลเดอร์ของเซสชันไม่ได้: ${watching.error}`);
+    }
   } catch (err) {
     reportError(err);
     throw err;
@@ -244,6 +255,7 @@ export async function captureSlot(slotNumber = null) {
   if (capturing) throw new Error('กล้องกำลังทำงานอยู่ กรุณารอ');
   if (state.phase !== 'shooting' || !state.session) throw new Error('ต้องกดเริ่มเซสชันก่อน');
   if (config.captureSource === 'folder') throw new Error('โหมด folder ให้เจ้าหน้าที่กดชัตเตอร์ที่กล้อง ภาพจะเข้าช่องว่างอัตโนมัติ');
+  if (manualShutter()) throw new Error('ตั้งไว้ให้เจ้าหน้าที่กดชัตเตอร์ที่กล้องเอง ภาพจะเข้าช่องว่างอัตโนมัติ');
   if (config.captureSource === 'ipad' || config.captureSource === 'web') {
     throw new Error('โหมด iPad/Web ต้องส่งภาพ JPEG จากอุปกรณ์เข้า API');
   }
@@ -332,6 +344,8 @@ async function finish(reason) {
   const validPhotos = filledPhotos(s);
   if (!s || !validPhotos.length) return;
 
+  // เลิกเฝ้าโฟลเดอร์ทันทีที่เริ่มประมวลผล กันรูปที่ตกลงมาช้าเข้ามาปนกับเซสชันที่ปิดไปแล้ว
+  if (manualShutter()) stopWatch();
   emit({ phase: 'processing', message: 'กำลังจัดหน้าและทำวิดีโอ...', countdown: 0 });
   console.log(`[session] ปิดเซสชัน ${s.id} (${reason}) — ${validPhotos.length} ช็อต`);
 
@@ -406,6 +420,9 @@ async function finish(reason) {
 export function reset() {
   clearTimeout(idleTimer);
   clearTimeout(reviewTimer);
+  // โหมดชัตเตอร์มือเฝ้าโฟลเดอร์เป็นราย ๆ เซสชัน จบแล้วต้องเลิกเฝ้า
+  // ไม่งั้นรูปที่ตกลงมาทีหลังจะไปโผล่ในเซสชันของคนถัดไป
+  if (manualShutter()) stopWatch();
   if (currentCancelToken) currentCancelToken.cancelled = true;
   emit({ phase: 'idle', session: null, message: '', countdown: 0 });
 }
@@ -473,6 +490,8 @@ export async function recoverSession(sessionId, action = 'resume') {
 export async function fakeShot(slotNumber = null) {
   if (config.captureSource === 'folder') return mockShot();
   if (state.phase !== 'shooting') throw new Error('ต้องกดเริ่มเซสชันก่อน');
+  // ชัตเตอร์มือ: จำลองให้เหมือนกล้องส่งไฟล์ลงโฟลเดอร์ของเซสชัน แล้วปล่อยให้ watcher หยิบเอง
+  if (manualShutter()) return mockShot(state.session.rawDir);
   return captureSlot(slotNumber);
 }
 

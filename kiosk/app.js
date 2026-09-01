@@ -24,6 +24,9 @@ const usesDevicePreview = () => isWebCamera() || (cfg.captureSource === 'digicam
 const usesPairedKiosk = () => isSelfService();
 // ให้ลูกค้าเลือกแบบการ์ดเองเมื่อช่างเปิดไว้ และมีให้เลือกจริงมากกว่าหนึ่งแบบ
 const customerPicksLayout = () => cfg.layoutChoice === 'customer' && (cfg.layouts || []).length > 1;
+// เจ้าหน้าที่กดชัตเตอร์ที่ตัวกล้องเอง โปรแกรมแค่รอไฟล์เข้ามา ไม่สั่งถ่าย
+const manualShutter = () => cfg.shutterMode === 'manual' && cfg.captureSource === 'digicam';
+const WAIT_TEXT = 'เจ้าหน้าที่กดชัตเตอร์ที่กล้องได้เลย';
 const startPath = () => usesPairedKiosk() ? '/api/web/session' : '/api/start';
 const resetPath = () => usesPairedKiosk() ? '/api/web/session/reset' : '/api/reset';
 const finishPath = () => usesPairedKiosk() ? '/api/web/session/finish' : '/api/finish';
@@ -282,7 +285,8 @@ async function beginShooting(layoutId) {
       body: JSON.stringify(layoutId ? { layout: layoutId } : {}),
     });
     applyState(result.state || await api(usesPairedKiosk() ? '/api/web/bootstrap' : '/api/state').then((data) => data.state || data));
-    if (isSelfService()) await captureForReview(1);
+    if (isSelfService() && !manualShutter()) await captureForReview(1);
+    else if (manualShutter()) $('shoot-status').textContent = WAIT_TEXT;
   } catch (err) {
     show('idle');
     $('idle-hint').textContent = cameraErrorMessage(err);
@@ -304,6 +308,12 @@ $('btn-accept').onclick = async () => {
       await api(finishPath(), { method: 'POST' });
       return;
     }
+    if (manualShutter()) {
+      // ไม่ต้องสั่งอะไร แค่เก็บปุ่มแล้วรอไฟล์รูปถัดไปจากกล้อง
+      $('review-actions').hidden = true;
+      $('shoot-status').textContent = WAIT_TEXT;
+      return;
+    }
     const next = state.session.slots.find((slot) => !slot.filled)?.number;
     if (next) await captureForReview(next);
   } catch (err) {
@@ -316,7 +326,20 @@ $('btn-accept').onclick = async () => {
 
 $('btn-retake').onclick = async () => {
   const slot = latestState?.shot;
-  if (slot > 0) await captureForReview(slot);
+  if (!(slot > 0)) return;
+  if (manualShutter()) {
+    // ลบรูปในช่องนั้นทิ้ง ช่องจะว่างอีกครั้ง รูปถัดไปที่กล้องส่งมาจะลงช่องเดิม
+    $('review-actions').hidden = true;
+    $('shoot-status').textContent = WAIT_TEXT;
+    try {
+      await api(usesPairedKiosk() ? `/api/web/session/photo/${slot}` : `/api/photo/${slot}`, { method: 'DELETE' });
+    } catch (err) {
+      $('shoot-status').textContent = err.message;
+      $('review-actions').hidden = false;
+    }
+    return;
+  }
+  await captureForReview(slot);
 };
 
 $('btn-cancel-session').onclick = async () => {
@@ -367,6 +390,11 @@ function applyState(state) {
       } else {
         $('shoot-status').textContent = count >= total ? 'ครบแล้ว รอเจ้าหน้าที่ตรวจรูป' : 'รอเจ้าหน้าที่ตรวจรูป';
       }
+    } else if (manualShutter()) {
+      $('lastshot').hidden = true;
+      $('liveview').hidden = !usesDevicePreview();
+      $('review-actions').hidden = true;
+      $('shoot-status').textContent = `${WAIT_TEXT} — รูปที่ ${count + 1} จาก ${total}`;
     } else if (usesDevicePreview() && isSelfService() && !capturePending) {
       $('lastshot').hidden = true;
       $('liveview').hidden = false;
