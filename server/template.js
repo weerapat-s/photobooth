@@ -355,7 +355,11 @@ const roundedMask = (w, h, r) =>
 async function fitToSlot(photoPath, slot, cornerRadius) {
   const filled = await sharp(photoPath)
     .rotate()
-    .resize(slot.width, slot.height, { fit: 'cover', position: 'attention' })
+    // ช่องกว้างกว่าอัตราส่วนของกล้อง (1.62 : 1.50) จึงต้องตัดความสูงทิ้งราว 7%
+    // ยึดขอบล่าง = ตัดเพดานทิ้ง เก็บเท้าไว้ ตู้ถ่ายคนยืนเต็มตัวจึงต้องการแบบนี้
+    // ห้ามใช้ position 'attention' เพราะมันเลื่อนกรอบไปหาจุดที่ "น่าสนใจ" คือใบหน้า
+    // แล้วตัดขาทิ้ง แถมผลไม่เหมือนกันระหว่างรูปสองใบที่ถ่ายติดกัน
+    .resize(slot.width, slot.height, { fit: 'cover', position: 'bottom' })
     .png()
     .toBuffer();
 
