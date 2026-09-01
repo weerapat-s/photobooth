@@ -1,8 +1,9 @@
-const CACHE = 'photobooth-shell-v7';
+const CACHE = 'photobooth-shell-v8';
 const SHELL = ['/', '/index.html', '/style.css', '/app.js', '/manifest.webmanifest', '/icon.svg'];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));
+  // ต้องบังคับโหลดใหม่ข้าม HTTP cache ไม่งั้นตอนติดตั้ง SW ใหม่อาจหยิบไฟล์เก่าจากแคชของเบราว์เซอร์มาเก็บต่อ
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL.map((url) => new Request(url, { cache: 'reload' })))));
   self.skipWaiting();
 });
 

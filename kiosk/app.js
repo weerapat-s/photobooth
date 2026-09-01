@@ -25,7 +25,8 @@ const usesPairedKiosk = () => isSelfService();
 // ให้ลูกค้าเลือกแบบการ์ดเองเมื่อช่างเปิดไว้ และมีให้เลือกจริงมากกว่าหนึ่งแบบ
 const customerPicksLayout = () => cfg.layoutChoice === 'customer' && (cfg.layouts || []).length > 1;
 // เจ้าหน้าที่กดชัตเตอร์ที่ตัวกล้องเอง โปรแกรมแค่รอไฟล์เข้ามา ไม่สั่งถ่าย
-const manualShutter = () => cfg.shutterMode === 'manual' && cfg.captureSource === 'digicam';
+// ไม่ผูกกับ captureSource เพื่อลดทางที่จะเพี้ยน — ถ้าเซิร์ฟเวอร์บอกว่า manual จอต้องไม่สั่งถ่ายเด็ดขาด
+const manualShutter = () => cfg.shutterMode === 'manual' && !isWebCamera();
 const WAIT_TEXT = 'เจ้าหน้าที่กดชัตเตอร์ที่กล้องได้เลย';
 const startPath = () => usesPairedKiosk() ? '/api/web/session' : '/api/start';
 const resetPath = () => usesPairedKiosk() ? '/api/web/session/reset' : '/api/reset';
@@ -173,10 +174,18 @@ async function captureForReview(slot) {
     else if (cfg.captureSource === 'ipad') throw new Error('โหมด Native iPad ต้องใช้แอป Photo Booth รุ่นเดิม');
     else await api(usesPairedKiosk() ? '/api/web/capture' : '/api/capture', { method: 'POST', body: JSON.stringify({ slot }) });
   } catch (err) {
-    $('shoot-status').textContent = 'ถ่ายไม่สำเร็จ: ' + cameraErrorMessage(err);
-    $('review-actions').hidden = false;
-    $('btn-accept').textContent = 'ลองถ่ายอีกครั้ง';
-    $('btn-retake').hidden = true;
+    // เซิร์ฟเวอร์ปฏิเสธเพราะตั้งเป็นชัตเตอร์มือ = จอเข้าใจโหมดผิด อย่าค้างที่ปุ่ม "ลองถ่ายอีกครั้ง"
+    // ให้เปลี่ยนไปสถานะรอเลย ไม่งั้นกดซ้ำก็โดนปฏิเสธวนไปจนต้องยกเลิกเซสชันทิ้ง
+    if (/ชัตเตอร์/.test(err.message || '')) {
+      cfg.shutterMode = 'manual';
+      $('review-actions').hidden = true;
+      $('shoot-status').textContent = WAIT_TEXT;
+    } else {
+      $('shoot-status').textContent = 'ถ่ายไม่สำเร็จ: ' + cameraErrorMessage(err);
+      $('review-actions').hidden = false;
+      $('btn-accept').textContent = 'ลองถ่ายอีกครั้ง';
+      $('btn-retake').hidden = true;
+    }
   } finally {
     capturePending = false;
   }
@@ -446,8 +455,32 @@ function connectEvents() {
   };
 }
 
+/**
+ * ถ้าโค้ดหน้าจอที่รันอยู่เก่ากว่าที่เซิร์ฟเวอร์เสิร์ฟ ให้ล้างแคชแล้วโหลดใหม่รอบเดียว
+ * เคยเจอ: เซิร์ฟเวอร์ดับตอนอัปเดต service worker เลย fallback ไปเสิร์ฟ app.js ตัวเก่า
+ * พอเซิร์ฟเวอร์กลับมา จอยิงคำสั่งที่ถูกปฏิเสธวนไม่จบ เซสชันค้างจนต้องลบแอปทิ้ง
+ * เก็บค่าใหม่ก่อนสั่งรีโหลดเสมอ ไม่งั้นจะวนรีโหลดไม่จบถ้าล้างแคชไม่สำเร็จ
+ */
+async function reloadIfStale(build) {
+  if (!build) return false;
+  const KEY = 'photobooth-kiosk-build';
+  let seen = null;
+  try { seen = localStorage.getItem(KEY); } catch { return false; }
+  if (seen === build) return false;
+  try { localStorage.setItem(KEY, build); } catch { return false; }
+  if (!seen) return false; // เปิดครั้งแรกบนเครื่องนี้ ยังไม่มีอะไรให้เทียบ
+  try {
+    if (window.caches) await Promise.all((await caches.keys()).map((key) => caches.delete(key)));
+    const workers = await navigator.serviceWorker?.getRegistrations?.() || [];
+    await Promise.all(workers.map((worker) => worker.unregister()));
+  } catch { /* ล้างไม่ได้ก็ยังรีโหลดต่อ */ }
+  location.reload();
+  return true;
+}
+
 async function boot() {
   const publicConfig = await api('/api/config');
+  if (await reloadIfStale(publicConfig.kioskBuild)) return;
   cfg = { ...cfg, ...publicConfig };
   if (usesPairedKiosk()) {
     try {

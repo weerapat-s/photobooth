@@ -14,6 +14,19 @@ import { generateCalibrationSheet } from './calibration.js';
 import { runCleanup } from './retention.js';
 import { availableLayouts, customerChooses, defaultLayout, findLayout } from './layouts.js';
 
+// ลายเซ็นของไฟล์หน้าจอ ใช้ให้เครื่องลูกข่ายรู้ว่าโค้ดที่ตัวเองรันอยู่เก่ากว่าที่เซิร์ฟเวอร์เสิร์ฟแล้ว
+// เคยเจอ: ตอนเซิร์ฟเวอร์ดับ service worker ของ iPad fallback ไปเสิร์ฟ app.js ตัวเก่า
+// พอเซิร์ฟเวอร์กลับมาเป็นเวอร์ชันใหม่ จอเลยยิงคำสั่งที่ถูกปฏิเสธวนไปเรื่อย ๆ จนเซสชันค้าง
+function kioskBuildId() {
+  const files = ['app.js', 'index.html', 'style.css', 'sw.js', 'operator.html'];
+  let stamp = 0;
+  for (const name of files) {
+    try { stamp += Math.round(fs.statSync(path.join(ROOT, 'kiosk', name)).mtimeMs); } catch { /* ไม่มีก็ข้าม */ }
+  }
+  return String(stamp);
+}
+const KIOSK_BUILD = kioskBuildId();
+
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(ROOT, 'kiosk')));
@@ -132,6 +145,7 @@ app.get('/api/web/bootstrap', requireWebKiosk, (req, res) => {
       shots: config.shots,
       countdown: config.countdown,
       shutterMode: config.shutterMode,
+      kioskBuild: KIOSK_BUILD,
       eventName: config.eventName,
       reviewSeconds: config.reviewSeconds,
       cameraFacing: config.webCameraFacing,
@@ -247,6 +261,7 @@ app.get('/api/ipad/bootstrap', requireIpadToken, (req, res) => {
       shots: config.shots,
       countdown: config.countdown,
       shutterMode: config.shutterMode,
+      kioskBuild: KIOSK_BUILD,
       eventName: config.eventName,
       reviewSeconds: config.reviewSeconds,
     },
@@ -363,6 +378,7 @@ app.get('/api/config', (req, res) => {
     kioskMode: config.kioskMode,
     countdown: config.countdown,
     shutterMode: config.shutterMode,
+    kioskBuild: KIOSK_BUILD,
     webCameraFacing: config.webCameraFacing,
     webMirror: config.webMirror,
     cameraFacing: config.webCameraFacing,
