@@ -52,6 +52,13 @@ export const config = {
   // รูปถ่ายจะคมขึ้นจริง (ย่อจากต้นฉบับกล้องน้อยลง) แต่ลายกราฟิกของเทมเพลตจะซอฟต์ลงตามการอัปสเกล
   cardTemplateScale: num(process.env.CARD_TEMPLATE_SCALE, 1),
 
+  // รายการเลย์เอาต์ที่เลือกได้ (ดู server/layouts.js) — ถ้าไม่มีไฟล์นี้จะถอยไปใช้ CARD_TEMPLATE เดี่ยว ๆ
+  cardLayoutsFile: process.env.CARD_LAYOUTS || 'assets/layouts.json',
+  // id ของเลย์เอาต์ที่ใช้เป็นค่าตั้งต้น
+  cardLayout: process.env.CARD_LAYOUT || '',
+  // fixed = ช่างล็อกไว้แบบเดียว | customer = ลูกค้ากดเลือกเองก่อนเริ่มถ่าย
+  cardLayoutChoice: process.env.CARD_LAYOUT_CHOICE || 'fixed',
+
   printLayout: process.env.PRINT_LAYOUT || 'strip2x6',
   printDpi: num(process.env.PRINT_DPI, 300),
   // การ์ด/ชีทปริ้นใช้แค่ช็อตล่าสุด N ภาพ (ไม่ใช่ทุกช็อตที่ถ่าย) — วิดีโอยังใช้ครบทุกช็อตเหมือนเดิม
@@ -94,6 +101,7 @@ const runtimeCheck = validateConfigPatch({
   PRINT_LAYOUT: config.printLayout,
   CAPTURE_SOURCE: config.captureSource,
   KIOSK_MODE: config.kioskMode,
+  CARD_LAYOUT_CHOICE: config.cardLayoutChoice,
   WEB_CAMERA_FACING: config.webCameraFacing,
   WEB_MIRROR: config.webMirror,
   DCC_TRANSPORT: config.dccTransport,
@@ -118,6 +126,8 @@ export function saveEnv(patch) {
   if ('PRINT_LAYOUT' in patch) config.printLayout = String(patch.PRINT_LAYOUT);
   if ('CARD_TEMPLATE' in patch) config.cardTemplate = String(patch.CARD_TEMPLATE);
   if ('CARD_TEMPLATE_HALF' in patch) config.cardTemplateHalf = String(patch.CARD_TEMPLATE_HALF);
+  if ('CARD_LAYOUT' in patch) config.cardLayout = String(patch.CARD_LAYOUT);
+  if ('CARD_LAYOUT_CHOICE' in patch) config.cardLayoutChoice = String(patch.CARD_LAYOUT_CHOICE);
   if ('PRINT_SHOTS' in patch) config.printShots = Number(patch.PRINT_SHOTS);
   if ('PRINT_THEME_COLOR' in patch) config.printThemeColor = String(patch.PRINT_THEME_COLOR);
   if ('PRINT_FRAME_COLOR' in patch) config.printFrameColor = String(patch.PRINT_FRAME_COLOR);

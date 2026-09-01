@@ -1,0 +1,9 @@
+[
+  {
+    "id": "expo-strip",
+    "name": "KMITL EXPO",
+    "template": "assets/kmitl-expo-template.png",
+    "half": "left",
+    "scale": 1
+  }
+]

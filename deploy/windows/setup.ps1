@@ -67,9 +67,46 @@ Ok "ใช้ Node.js ที่มากับชุด ($nodeVersion) ไม่
 
 # ── 4. ตั้งค่า ───────────────────────────────────────────────────────────────
 Step 'ตั้งค่า'
+
+function New-RandomInt([int]$max) {
+  $bytes = New-Object byte[] 4
+  $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+  try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
+  return [Math]::Abs([BitConverter]::ToInt32($bytes, 0)) % $max
+}
+
+# รหัสจับคู่ iPad ต้องพิมพ์ด้วยมือได้ จึงสั้นและตัดตัวที่สับสนออก (0/o, 1/l/i)
+function New-PairCode {
+  $alphabet = '23456789abcdefghjkmnpqrstuvwxyz'
+  $code = ''
+  for ($i = 0; $i -lt 6; $i++) { $code += $alphabet[(New-RandomInt $alphabet.Length)] }
+  return $code
+}
+
+function Set-EnvLine([System.Collections.Generic.List[string]]$lines, [string]$name, [string]$value) {
+  for ($i = 0; $i -lt $lines.Count; $i++) {
+    if ($lines[$i] -match ('^' + [regex]::Escape($name) + '=')) { $lines[$i] = "$name=$value"; return }
+  }
+  $lines.Add("$name=$value")
+}
+
+function Get-EnvValue([string]$path, [string]$name) {
+  $match = Select-String -LiteralPath $path -Pattern ('^' + [regex]::Escape($name) + '=(.*)$') | Select-Object -First 1
+  if ($match) { return $match.Matches[0].Groups[1].Value.Trim() }
+  return ''
+}
+
 $envFile = Join-Path $Target '.env'
 if (Test-Path -LiteralPath $envFile) {
   Ok 'มี .env เดิมอยู่แล้ว เก็บไว้ตามเดิม'
+  # ชุดติดตั้งรุ่นแรกลืมตั้งรหัสจับคู่ ทำให้เหลือแต่โทเคนยาว 64 ตัวซึ่งพิมพ์บน iPad ไม่ไหว
+  # เจอเครื่องแบบนั้นก็เติมรหัสให้เลย จะได้ไม่ต้องลงใหม่
+  if (-not (Get-EnvValue $envFile 'WEB_PAIR_CODE')) {
+    $lines = [System.Collections.Generic.List[string]](Get-Content -LiteralPath $envFile -Encoding UTF8)
+    Set-EnvLine $lines 'WEB_PAIR_CODE' (New-PairCode)
+    Set-Content -LiteralPath $envFile -Value $lines -Encoding UTF8
+    Ok 'เติมรหัสจับคู่ iPad ที่ยังว่างอยู่ให้แล้ว'
+  }
 } else {
   $template = Join-Path $Source 'env.template'
   if (-not (Test-Path -LiteralPath $template)) { throw "ชุดติดตั้งไม่ครบ: ไม่พบ env.template" }
@@ -85,17 +122,13 @@ if (Test-Path -LiteralPath $envFile) {
   $booth = ($env:COMPUTERNAME -replace '[^A-Za-z0-9]', '-').ToLower()
   if (-not $booth) { $booth = 'booth-1' }
 
-  $patch = @{ IPAD_API_TOKEN = $token; BOOTH_NAME = $booth }
-  foreach ($name in $patch.Keys) {
-    $found = $false
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-      if ($lines[$i] -match ('^' + [regex]::Escape($name) + '=')) { $lines[$i] = "$name=$($patch[$name])"; $found = $true; break }
-    }
-    if (-not $found) { $lines.Add("$name=$($patch[$name])") }
-  }
+  Set-EnvLine $lines 'IPAD_API_TOKEN' $token
+  Set-EnvLine $lines 'BOOTH_NAME' $booth
+  Set-EnvLine $lines 'WEB_PAIR_CODE' (New-PairCode)
   Set-Content -LiteralPath $envFile -Value $lines -Encoding UTF8
   Ok "สร้าง .env ใหม่ (ชื่อบูท $booth, โทเคน iPad สุ่มใหม่)"
 }
+$pairCode = Get-EnvValue $envFile 'WEB_PAIR_CODE'
 
 $captureDir = 'C:\photobooth-captures'
 try {
@@ -195,6 +228,12 @@ if ($warnings.Count -eq 0) {
   foreach ($w in $warnings) { Write-Host "   - $w" -ForegroundColor Yellow }
 }
 Write-Host ''
+if ($pairCode) {
+  Write-Host "  รหัสจับคู่ iPad ของเครื่องนี้:  $pairCode" -ForegroundColor Cyan
+  Write-Host '  (ใส่ครั้งเดียวตอนเปิดหน้าจอลูกค้าบน iPad ดูซ้ำได้ที่บรรทัด WEB_PAIR_CODE ใน)'
+  Write-Host "  $envFile"
+  Write-Host ''
+}
 Write-Host '  ต่อไป:'
 Write-Host '   1. เสียบกล้องเข้าคอมด้วยสาย USB แล้วเปิดกล้อง'
 Write-Host '   2. ดับเบิลคลิก "Photo Booth" บนหน้าจอ (จอลูกค้า)'

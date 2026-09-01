@@ -250,3 +250,40 @@ h2 { font-size: clamp(24px, 3.5vw, 44px); }
   .review-actions .big-btn { padding: 13px 36px; }
   .status { font-size: 18px; }
 }
+
+/* หน้าเลือกแบบการ์ด — โชว์เฉพาะตอนเปิดให้ลูกค้าเลือกเองและมีมากกว่าหนึ่งแบบ */
+.layout-inner { display: flex; flex-direction: column; align-items: center; gap: clamp(10px, 2dvh, 22px); width: 100%; }
+.layout-grid {
+  display: flex;
+  gap: clamp(16px, 3vw, 40px);
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: stretch;
+}
+.layout-card {
+  background: none;
+  border: 3px solid transparent;
+  border-radius: 20px;
+  padding: 12px;
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  transition: border-color .15s, transform .15s;
+}
+.layout-card:active { transform: scale(.97); }
+.layout-card:focus-visible, .layout-card.is-picked { border-color: var(--accent); }
+/* รูปตัวอย่างเป็นสตริปสูง ๆ จึงคุมด้วยความสูงของจอ ไม่ใช่ความกว้าง ไม่งั้นล้นจอแนวนอน */
+.layout-card img {
+  height: min(52dvh, 560px);
+  width: auto;
+  max-width: 38vw;
+  object-fit: contain;
+  border-radius: 12px;
+  background: #000;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, .5);
+}
+.layout-card span { font-size: clamp(18px, 2vw, 26px); }

@@ -151,7 +151,17 @@
     <label>ชื่องาน (โชว์บนสตริปและจอลูกค้า)</label>
     <input id="in-event">
 
-    <label>เลย์เอาต์การ์ด</label>
+    <label>แบบการ์ด (เทมเพลตสำเร็จรูป)</label>
+    <select id="in-card-layout"></select>
+
+    <label>ให้ลูกค้าเลือกแบบการ์ดเองไหม</label>
+    <select id="in-card-layout-choice">
+      <option value="fixed">ไม่ให้เลือก — ใช้แบบที่ตั้งไว้ด้านบน</option>
+      <option value="customer">ให้เลือกเอง — โชว์หน้าเลือกก่อนเริ่มถ่าย</option>
+    </select>
+    <p class="hint" id="card-layout-hint"></p>
+
+    <label>เลย์เอาต์สำรอง (ใช้เมื่อไม่มีเทมเพลตสำเร็จรูป)</label>
     <select id="in-layout">
       <option value="strip2x6">strip2x6 — สตริปแนวตั้ง</option>
       <option value="grid4x6">grid4x6 — ตาราง 2x2 ธีมมืด</option>
@@ -287,6 +297,22 @@ async function loadConfig() {
   $('in-idle').value = c.sessionIdleSeconds;
   $('in-event').value = c.eventName;
   $('in-layout').value = c.printLayout;
+
+  const layoutSelect = $('in-card-layout');
+  layoutSelect.textContent = '';
+  for (const layout of c.layouts || []) {
+    const option = document.createElement('option');
+    option.value = layout.id;
+    option.textContent = layout.name;
+    layoutSelect.append(option);
+  }
+  layoutSelect.disabled = !(c.layouts || []).length;
+  if (c.layout) layoutSelect.value = c.layout;
+  $('in-card-layout-choice').value = c.layoutChoice || 'fixed';
+  const count = (c.layouts || []).length;
+  $('card-layout-hint').textContent = count > 1
+    ? `มี ${count} แบบให้เลือก`
+    : (count === 1 ? 'มีแบบเดียว — เปิดให้ลูกค้าเลือกก็ยังไม่โชว์หน้าเลือก' : 'ยังไม่มีเทมเพลตสำเร็จรูป จะใช้เลย์เอาต์สำรองด้านล่างแทน');
   $('in-themecolor').value = c.printThemeColor;
   browse(c.watchDir || null);
 }
@@ -405,6 +431,8 @@ $('btn-save').onclick = async () => {
         SESSION_IDLE_SECONDS: Number($('in-idle').value),
         EVENT_NAME: $('in-event').value.trim(),
         PRINT_LAYOUT: $('in-layout').value,
+        CARD_LAYOUT: $('in-card-layout').value,
+        CARD_LAYOUT_CHOICE: $('in-card-layout-choice').value,
         PRINT_THEME_COLOR: $('in-themecolor').value,
       }),
     });

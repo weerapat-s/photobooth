@@ -3,6 +3,7 @@ import path from 'node:path';
 import sharp from 'sharp';
 import { config } from './config.js';
 import { detectSlots, halfOf, renderTemplateCard, templateExists } from './template.js';
+import { findLayout, defaultLayout } from './layouts.js';
 
 const DPI = config.printDpi;
 const inch = (n) => Math.round(n * DPI);
@@ -253,35 +254,41 @@ async function composeGridCard(photos, spec, meta) {
  */
 // สแกนหาช่องในเทมเพลตครั้งเดียวแล้วจำไว้ (สแกนทุกพิกเซล ช้าเกินกว่าจะทำทุกเซสชัน)
 // ถ้าไฟล์เทมเพลตถูกแก้ จะรู้จาก mtime แล้วสแกนใหม่ให้เอง
-let templateCache = null;
+// เก็บเป็น map เพราะตอนนี้มีหลายเลย์เอาต์ให้เลือก สลับไปมาแล้วไม่ต้องสแกนใหม่ทุกครั้ง
+const templateCache = new Map();
 async function loadTemplate(templatePath, half) {
   const mtime = fs.statSync(templatePath).mtimeMs;
-  if (templateCache && templateCache.path === templatePath && templateCache.mtime === mtime && templateCache.half === half) {
-    return templateCache.template;
-  }
+  const key = `${templatePath}|${half}`;
+  const hit = templateCache.get(key);
+  if (hit && hit.mtime === mtime) return hit.template;
+
   const full = await detectSlots(templatePath);
   if (!full.slots.length) throw new Error(`ไม่พบช่องใส่รูปในเทมเพลต ${path.basename(templatePath)}`);
   const template = half === 'full' ? full : halfOf(full, half);
-  templateCache = { path: templatePath, mtime, half, template };
-  console.log(`[compose] เทมเพลต ${path.basename(templatePath)} — ${template.width}x${template.height}, ${template.slots.length} ช่อง`);
+  templateCache.set(key, { mtime, template });
+  console.log(`[compose] เทมเพลต ${path.basename(templatePath)} (${half}) — ${template.width}x${template.height}, ${template.slots.length} ช่อง`);
   return template;
 }
 
-/** จำนวนช่องรูปของการ์ดตามการตั้งค่าปัจจุบัน (ใช้เตือนตอน preflight ว่า SHOTS ตรงกับเทมเพลตไหม) */
-export async function cardSlotCount() {
-  if (!templateExists(config.cardTemplate)) return null;
-  const template = await loadTemplate(config.cardTemplate, config.cardTemplateHalf);
+/** จำนวนช่องรูปของเลย์เอาต์ (ใช้เตือนว่า SHOTS ตรงกับเทมเพลตไหม) */
+export async function cardSlotCount(layoutId) {
+  const layout = findLayout(layoutId) || defaultLayout();
+  if (!layout) return null;
+  const template = await loadTemplate(layout.templatePath, layout.half);
   return template.slots.length;
 }
 
 export async function composeCard(photos, outDir, meta = {}) {
-  // ใช้เทมเพลตสำเร็จรูปถ้าตั้งไว้ ไม่งั้นวาดเลย์เอาต์เดิม
-  if (templateExists(config.cardTemplate)) {
-    const template = await loadTemplate(config.cardTemplate, config.cardTemplateHalf);
-    const cardBuf = await renderTemplateCard(photos, template, config.cardTemplate, { scale: config.cardTemplateScale });
+  // ใช้เทมเพลตสำเร็จรูปถ้ามีเลย์เอาต์ที่ใช้ได้ ไม่งั้นวาดเลย์เอาต์เดิม
+  // รับ id ที่เซสชันเลือกไว้ตั้งแต่ตอนเริ่มถ่าย — ด่านตรวจว่าลูกค้าเลือกเองได้ไหมอยู่ที่ startSession
+  // ถ้ามาตรวจซ้ำตรงนี้ เซสชันที่เลือกไว้ตอนเปิดโหมดให้เลือก จะประกอบใหม่ผิดแบบเมื่อช่างสลับไปโหมดล็อก
+  const layout = findLayout(meta.layout) || defaultLayout();
+  if (layout) {
+    const template = await loadTemplate(layout.templatePath, layout.half);
+    const cardBuf = await renderTemplateCard(photos, template, layout.templatePath, { scale: layout.scale });
     const card = path.join(outDir, 'card.jpg');
     await sharp(cardBuf).toFile(card);
-    return { card };
+    return { card, layout: layout.id };
   }
 
   const isGrid = config.printLayout === 'grid4x6';

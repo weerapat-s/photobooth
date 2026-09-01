@@ -79,6 +79,19 @@ export function validateConfigPatch(patch) {
         }
         break;
       }
+      case 'CARD_LAYOUT_CHOICE': {
+        if (!['fixed', 'customer'].includes(strVal)) {
+          errors.push(`CARD_LAYOUT_CHOICE ต้องเป็น 'fixed' หรือ 'customer' (ได้รับ: ${val})`);
+        }
+        break;
+      }
+      case 'CARD_LAYOUT': {
+        // ปล่อยค่าว่างได้ = ใช้เลย์เอาต์แรกที่ใช้งานได้
+        if (strVal && !/^[a-z0-9][a-z0-9-]*$/.test(strVal)) {
+          errors.push(`CARD_LAYOUT ต้องเป็น id ที่มีแค่ a-z 0-9 และ - (ได้รับ: ${val})`);
+        }
+        break;
+      }
       case 'DCC_TRANSPORT': {
         if (!['auto', 'webserver', 'remotecmd'].includes(strVal)) {
           errors.push(`DCC_TRANSPORT ต้องเป็น 'auto', 'webserver' หรือ 'remotecmd' (ได้รับ: ${val})`);

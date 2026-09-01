@@ -1,6 +1,6 @@
 const $ = (id) => document.getElementById(id);
 const screens = {
-  setup: $('screen-setup'), idle: $('screen-idle'), shoot: $('screen-shoot'),
+  setup: $('screen-setup'), idle: $('screen-idle'), layout: $('screen-layout'), shoot: $('screen-shoot'),
   processing: $('screen-processing'), done: $('screen-done'), error: $('screen-error'),
 };
 
@@ -22,6 +22,8 @@ const isWebCamera = () => cfg.captureSource === 'web';
 // โหมด digicam ใช้กล้อง iPad เป็นกระจก/Live View เท่านั้น ส่วนไฟล์จริงมาจากกล้อง DSLR
 const usesDevicePreview = () => isWebCamera() || (cfg.captureSource === 'digicam' && cfg.devicePreview !== false);
 const usesPairedKiosk = () => isSelfService();
+// ให้ลูกค้าเลือกแบบการ์ดเองเมื่อช่างเปิดไว้ และมีให้เลือกจริงมากกว่าหนึ่งแบบ
+const customerPicksLayout = () => cfg.layoutChoice === 'customer' && (cfg.layouts || []).length > 1;
 const startPath = () => usesPairedKiosk() ? '/api/web/session' : '/api/start';
 const resetPath = () => usesPairedKiosk() ? '/api/web/session/reset' : '/api/reset';
 const finishPath = () => usesPairedKiosk() ? '/api/web/session/finish' : '/api/finish';
@@ -236,19 +238,58 @@ $('btn-start').onclick = async () => {
     await refreshCameraStatus({ showChecking: true });
     if (!cameraReady) return;
   }
+  if (customerPicksLayout()) {
+    renderLayoutPicker();
+    show('layout');
+    return;
+  }
+  await beginShooting(null);
+};
+
+$('btn-layout-back').onclick = () => show('idle');
+
+function renderLayoutPicker() {
+  const grid = $('layout-grid');
+  grid.textContent = '';
+  for (const layout of cfg.layouts || []) {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'layout-card';
+    const img = document.createElement('img');
+    img.src = layout.preview;
+    img.alt = layout.name;
+    const label = document.createElement('span');
+    label.textContent = layout.name;
+    card.append(img, label);
+    card.onclick = async () => {
+      if (card.classList.contains('is-picked')) return; // กันแตะรัวจนเปิดสองเซสชัน
+      for (const other of grid.children) other.classList.remove('is-picked');
+      card.classList.add('is-picked');
+      await beginShooting(layout.id);
+    };
+    grid.append(card);
+  }
+}
+
+async function beginShooting(layoutId) {
   $('btn-start').disabled = true;
   $('idle-hint').textContent = '';
   try {
     if (usesDevicePreview()) await ensureCamera();
-    const result = await api(startPath(), { method: 'POST' });
+    const result = await api(startPath(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(layoutId ? { layout: layoutId } : {}),
+    });
     applyState(result.state || await api(usesPairedKiosk() ? '/api/web/bootstrap' : '/api/state').then((data) => data.state || data));
     if (isSelfService()) await captureForReview(1);
   } catch (err) {
+    show('idle');
     $('idle-hint').textContent = cameraErrorMessage(err);
   } finally {
     setTimeout(() => { $('btn-start').disabled = false; }, 1000);
   }
-};
+}
 
 $('btn-again').onclick = () => api(resetPath(), { method: 'POST' });
 $('btn-back').onclick = () => api(resetPath(), { method: 'POST' });
@@ -289,7 +330,8 @@ function applyState(state) {
   if (state.phase === 'idle') {
     shownSessionId = null;
     shownPhotoAt = null;
-    show('idle');
+    // อย่าดึงกลับหน้าแรกระหว่างลูกค้ากำลังเลือกแบบการ์ด — ยังไม่ได้เปิดเซสชัน สถานะจึงเป็น idle อยู่
+    if (screens.layout.hidden) show('idle');
     return;
   }
   if (state.phase === 'shooting' && state.session) {

@@ -6,6 +6,7 @@ import { config } from './config.js';
 import { camera } from './camera.js';
 import { watcher, mockShot } from './watcher.js';
 import { composeCard, makePreview } from './compose.js';
+import { resolveLayout } from './layouts.js';
 import { makeVideoFromFrames } from './video.js';
 import * as nc from './nextcloud.js';
 import { saveJournal, loadJournal, scanUnfinishedSessions, filterExistingPaths } from './journal.js';
@@ -82,6 +83,7 @@ export function snapshot(extra = {}) {
       shareUrl: s.shareUrl || null,
       qr: s.qr || null,
       startedAt: s.startedAt,
+      layout: s.layout || null,
     },
     ...extra,
   };
@@ -105,7 +107,7 @@ function emit(patch = {}) {
   bus.emit('update', snapshot());
 }
 
-function newSession() {
+function newSession(layoutId = null) {
   const randomHex = Math.random().toString(36).substring(2, 6);
   const id = `${config.boothName}-${stamp()}-${randomHex}`;
   return {
@@ -113,6 +115,7 @@ function newSession() {
     localDir: path.join(config.sessionsDir, id),
     rawDir: path.join(config.captureDir, id),
     startedAt: Date.now(),
+    layout: layoutId,
     photos: [],
     previews: [],
     shareUrl: null,
@@ -132,12 +135,12 @@ function reportError(err) {
   emit({ phase: 'error', message: err.message, countdown: 0 });
 }
 
-async function beginSession() {
+async function beginSession(layoutId = null) {
   clearTimeout(reviewTimer);
   if (currentCancelToken) currentCancelToken.cancelled = true;
   currentCancelToken = { cancelled: false };
 
-  const s = newSession();
+  const s = newSession(layoutId);
   await fsp.mkdir(s.localDir, { recursive: true });
   normalizeSlots(s);
   emit({ phase: 'shooting', session: s, message: 'พร้อมถ่ายรูปที่ 1 — รอเจ้าหน้าที่กดถ่าย', countdown: 0, shot: 0 });
@@ -212,7 +215,7 @@ function addPhoto(file, slotIndex = null) {
 }
 
 /** เจ้าหน้าที่เริ่มเซสชันก่อน แล้วจึงกดถ่ายทีละช่อง */
-export async function startSession() {
+export async function startSession({ layout } = {}) {
   if (capturing || state.phase === 'processing') throw new Error('กำลังทำงานอยู่');
   if (state.phase === 'shooting') throw new Error('มีเซสชันที่กำลังถ่ายอยู่แล้ว');
 
@@ -223,7 +226,10 @@ export async function startSession() {
     }
   }
 
-  const s = await beginSession();
+  // ตัดสินเลย์เอาต์ทีเดียวตอนเริ่ม แล้วผูกไว้กับเซสชัน
+  // ถ้าไปตัดสินตอนประกอบการ์ด ช่างสลับค่ากลางคันแล้วลูกค้าจะได้คนละแบบกับที่กดเลือก
+  const chosen = resolveLayout(layout);
+  const s = await beginSession(chosen?.id || null);
   try {
     if (config.captureSource === 'digicam') await camera.setSessionFolder(s.rawDir);
     else await fsp.mkdir(s.rawDir, { recursive: true });
@@ -333,6 +339,7 @@ async function finish(reason) {
   if (!s.cardFile || !filterExistingPaths([s.cardFile]).length) {
     const cardPhotos = validPhotos.slice(-config.printShots);
     const { card } = await composeCard(cardPhotos, s.localDir, {
+      layout: s.layout,
       title: config.eventName,
       subtitle: new Date(s.startedAt).toLocaleString('th-TH'),
       date: new Date(s.startedAt),

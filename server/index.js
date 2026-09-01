@@ -1,4 +1,5 @@
 import express from 'express';
+import sharp from 'sharp';
 import path from 'node:path';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
@@ -11,6 +12,7 @@ import { bus, snapshot, reset, startSession, captureSlot, deletePhoto, finishNow
 import { runPreflightChecks } from './preflight.js';
 import { generateCalibrationSheet } from './calibration.js';
 import { runCleanup } from './retention.js';
+import { availableLayouts, customerChooses, defaultLayout, findLayout } from './layouts.js';
 
 const app = express();
 app.use(express.json());
@@ -134,6 +136,13 @@ app.get('/api/web/bootstrap', requireWebKiosk, (req, res) => {
       cameraFacing: config.webCameraFacing,
       mirror: config.webMirror,
       devicePreview: config.captureSource === 'digicam' || config.captureSource === 'web',
+      layouts: availableLayouts().map((layout) => ({
+        id: layout.id,
+        name: layout.name,
+        preview: `/api/layout/${layout.id}/preview.jpg`,
+      })),
+      layout: defaultLayout()?.id || null,
+      layoutChoice: customerChooses() ? 'customer' : 'fixed',
     },
     state: snapshot(),
   });
@@ -141,7 +150,7 @@ app.get('/api/web/bootstrap', requireWebKiosk, (req, res) => {
 
 app.post('/api/web/session', requireWebKiosk, async (req, res) => {
   try {
-    const id = await startSession();
+    const id = await startSession({ layout: req.body?.layout });
     res.json({ ok: true, id, state: snapshot() });
   } catch (err) {
     res.status(409).json({ ok: false, error: err.message });
@@ -236,7 +245,7 @@ app.get('/api/ipad/bootstrap', requireIpadToken, (req, res) => {
 
 app.post('/api/ipad/session', requireIpadToken, async (req, res) => {
   try {
-    const id = await startSession();
+    const id = await startSession({ layout: req.body?.layout });
     res.json({ ok: true, id, state: snapshot() });
   } catch (err) {
     res.status(409).json({ ok: false, error: err.message });
@@ -350,6 +359,13 @@ app.get('/api/config', (req, res) => {
     devicePreview: config.captureSource === 'digicam' || config.captureSource === 'web',
     ipadApiReady: Boolean(config.ipadApiToken),
     operatorControl: config.kioskMode === 'operator',
+    layouts: availableLayouts().map((layout) => ({
+      id: layout.id,
+      name: layout.name,
+      preview: `/api/layout/${layout.id}/preview.jpg`,
+    })),
+    layout: defaultLayout()?.id || null,
+    layoutChoice: customerChooses() ? 'customer' : 'fixed',
   });
 });
 
@@ -375,6 +391,37 @@ app.get('/api/camera/status', requirePairedWhenSelfService, async (req, res) => 
   res.status(status.ok ? 200 : 503).json(status);
 });
 
+// รูปตัวอย่างของแต่ละเลย์เอาต์ — ย่อจากไฟล์เทมเพลตจริง จะได้ไม่ต้องมานั่งทำรูป preview แยก
+// เปิดให้ทุกคนดูได้เหมือนไฟล์หน้าเว็บ เพราะเป็นแค่กราฟิกของงาน ไม่ใช่รูปลูกค้า
+const layoutPreviewCache = new Map();
+app.get('/api/layout/:id/preview.jpg', async (req, res) => {
+  const layout = findLayout(req.params.id);
+  if (!layout) return res.status(404).json({ ok: false, error: 'ไม่พบเลย์เอาต์' });
+  try {
+    const mtime = fs.statSync(layout.templatePath).mtimeMs;
+    const hit = layoutPreviewCache.get(layout.id);
+    let buf = hit && hit.mtime === mtime ? hit.buf : null;
+    if (!buf) {
+      const meta = await sharp(layout.templatePath).metadata();
+      const half = layout.half === 'full' ? null : Math.floor(meta.width / 2);
+      let image = sharp(layout.templatePath);
+      if (half) {
+        image = image.extract({
+          left: layout.half === 'right' ? meta.width - half : 0,
+          top: 0,
+          width: half,
+          height: meta.height,
+        });
+      }
+      buf = await image.resize({ height: 900, withoutEnlargement: true }).jpeg({ quality: 82 }).toBuffer();
+      layoutPreviewCache.set(layout.id, { mtime, buf });
+    }
+    res.type('jpeg').set('Cache-Control', 'no-cache').send(buf);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 app.post('/api/start', blockLegacyMutationInIpadMode, async (req, res) => {
   try {
     if (config.requirePreflight) {
@@ -383,7 +430,7 @@ app.post('/api/start', blockLegacyMutationInIpadMode, async (req, res) => {
         throw new Error('ต้องผ่าน Production Preflight ก่อนเริ่มถ่าย');
       }
     }
-    const id = await startSession();
+    const id = await startSession({ layout: req.body?.layout });
     res.json({ ok: true, id });
   } catch (err) {
     res.status(409).json({ ok: false, error: err.message });
@@ -471,7 +518,7 @@ app.post('/api/mock-shot', blockLegacyMutationInIpadMode, async (req, res) => {
 /** เปลี่ยนค่าตั้งต้นจากหน้า operator แล้วเขียนกลับ .env */
 app.post('/api/settings', blockLegacyMutationInIpadMode, (req, res) => {
   try {
-    const allowed = ['WATCH_DIR', 'SHOTS', 'PRINT_SHOTS', 'EVENT_NAME', 'SESSION_IDLE_SECONDS', 'PRINT_LAYOUT', 'PRINT_THEME_COLOR', 'REVIEW_SECONDS', 'CAPTURE_SOURCE', 'COUNTDOWN', 'KIOSK_MODE', 'WEB_CAMERA_FACING', 'WEB_MIRROR'];
+    const allowed = ['WATCH_DIR', 'SHOTS', 'PRINT_SHOTS', 'EVENT_NAME', 'SESSION_IDLE_SECONDS', 'PRINT_LAYOUT', 'PRINT_THEME_COLOR', 'REVIEW_SECONDS', 'CAPTURE_SOURCE', 'COUNTDOWN', 'KIOSK_MODE', 'WEB_CAMERA_FACING', 'WEB_MIRROR', 'CARD_LAYOUT', 'CARD_LAYOUT_CHOICE'];
     const patch = {};
     for (const key of allowed) {
       if (req.body && req.body[key] !== undefined && req.body[key] !== null) patch[key] = req.body[key];
@@ -480,6 +527,9 @@ app.post('/api/settings', blockLegacyMutationInIpadMode, (req, res) => {
 
     if (patch.WATCH_DIR && !fs.existsSync(patch.WATCH_DIR)) {
       return res.status(400).json({ ok: false, error: `ไม่พบโฟลเดอร์: ${patch.WATCH_DIR}` });
+    }
+    if (patch.CARD_LAYOUT && !findLayout(patch.CARD_LAYOUT)) {
+      return res.status(400).json({ ok: false, error: `ไม่พบเลย์เอาต์ ${patch.CARD_LAYOUT}` });
     }
 
     saveEnv(patch);
