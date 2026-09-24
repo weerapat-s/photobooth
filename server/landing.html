@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<title>รับรูปของคุณ</title>
+<style>
+  :root {
+    --bg: #F5F4FA;
+    --card: #FFFFFF;
+    --ink: #16161D;
+    --muted: #6B6B78;
+    --line: #E6E5EE;
+    --soft: #F1F0F7;
+    --accent: #E8385A;
+    --accent-ink: #FFFFFF;
+    --ok: #1C8A52;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0E0E13;
+      --card: #191920;
+      --ink: #F2F2F6;
+      --muted: #9C9CAA;
+      --line: #2A2A34;
+      --soft: #22222B;
+      --accent: #FF5C7A;
+      --accent-ink: #16161D;
+      --ok: #5FD69A;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { background: var(--bg); }
+  body {
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Sarabun", "Leelawadee UI", "Noto Sans Thai", system-ui, sans-serif;
+    line-height: 1.55;
+    min-height: 100dvh;
+    display: flex;
+    justify-content: center;
+    padding: max(20px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+  }
+  main { width: 100%; max-width: 26rem; display: flex; flex-direction: column; gap: 16px; }
+  .event { font-size: .8rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); text-align: center; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    padding: 22px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  [hidden] { display: none !important; }
+  h1 { font-size: 1.6rem; line-height: 1.25; text-align: center; text-wrap: balance; }
+  .lede { color: var(--muted); text-align: center; font-size: .98rem; }
+  .amounts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  button, .btn { font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .amount {
+    border: 2px solid var(--line);
+    background: var(--soft);
+    color: var(--ink);
+    border-radius: 16px;
+    padding: 14px 4px 10px;
+    font-size: 1.5rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+  .amount small { display: block; font-size: .78rem; font-weight: 600; color: var(--muted); }
+  .amount:active { transform: scale(.97); }
+  form { display: flex; gap: 8px; align-items: center; }
+  input {
+    flex: 1;
+    min-width: 0;
+    font: inherit;
+    font-size: 1.1rem;
+    font-variant-numeric: tabular-nums;
+    padding: 12px 14px;
+    border-radius: 14px;
+    border: 2px solid var(--line);
+    background: var(--card);
+    color: var(--ink);
+  }
+  input:focus { outline: none; border-color: var(--accent); }
+  .unit { color: var(--muted); font-weight: 600; }
+  .ghost {
+    border: 2px solid var(--ink);
+    background: transparent;
+    color: var(--ink);
+    border-radius: 14px;
+    padding: 11px 16px;
+    font-weight: 700;
+  }
+  .primary, .skip {
+    width: 100%;
+    border: 0;
+    border-radius: 999px;
+    padding: 16px 20px;
+    font-size: 1.1rem;
+    font-weight: 800;
+    text-align: center;
+    text-decoration: none;
+    display: block;
+  }
+  .primary { background: var(--accent); color: var(--accent-ink); }
+  /* ปุ่มข้ามเด่นพอ ๆ กับปุ่มจ่าย — การสนับสนุนเป็นเรื่องสมัครใจจริง ๆ ไม่ซ่อนทางออก */
+  .skip { background: var(--ink); color: var(--bg); }
+  .linkish { background: none; border: 0; color: var(--muted); font-weight: 600; padding: 8px; text-decoration: underline; text-underline-offset: 3px; }
+  .row { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; }
+  .err { color: var(--accent); text-align: center; font-size: .92rem; min-height: 1.2em; }
+  .qr-wrap { background: #fff; border-radius: 16px; padding: 12px; align-self: center; width: min(100%, 17rem); }
+  .qr-wrap img { display: block; width: 100%; height: auto; aspect-ratio: 1; }
+  .howto { background: var(--soft); border-radius: 14px; padding: 12px 14px; font-size: .92rem; color: var(--ink); }
+  .howto ol { padding-left: 1.15rem; display: grid; gap: 4px; }
+  .or { text-align: center; color: var(--muted); font-size: .9rem; }
+  .pp { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
+  .pp strong { font-size: 1.25rem; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+  .copied { color: var(--ok); font-weight: 700; }
+  .note { font-size: .8rem; color: var(--muted); text-align: center; }
+  button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<main>
+  <p class="event" id="event"></p>
+
+  <!-- ถามก่อนว่าอยากสนับสนุนไหม -->
+  <section class="card" id="step-ask" hidden>
+    <h1>รูปของคุณพร้อมแล้ว</h1>
+    <p class="lede">ถ้าชอบ ช่วยสนับสนุนทีมงานได้ตามใจ<br>ไม่สนับสนุนก็รับรูปได้เหมือนกันทุกอย่าง</p>
+    <div class="amounts" id="amounts"></div>
+    <form id="custom" novalidate>
+      <input id="amount" type="number" inputmode="numeric" min="1" step="1" placeholder="ใส่จำนวนเอง" aria-label="จำนวนเงิน (บาท)">
+      <span class="unit">บาท</span>
+      <button class="ghost" type="submit">ตกลง</button>
+    </form>
+    <p class="err" id="err"></p>
+    <a class="skip" id="skip" href="#">ข้าม ไปรับรูปเลย</a>
+  </section>
+
+  <!-- QR พร้อมเพย์ของยอดที่เลือก -->
+  <section class="card" id="step-pay" hidden>
+    <h1>สนับสนุน <span id="pay-amount"></span> บาท</h1>
+    <div class="qr-wrap"><img id="pay-qr" alt="QR พร้อมเพย์"></div>
+    <div class="howto">
+      <ol>
+        <li>กดค้างที่รูป QR แล้วเลือก <b>บันทึกรูปภาพ</b></li>
+        <li>เปิดแอปธนาคาร กดสแกน แล้วเลือก <b>รูปจากอัลบั้ม</b></li>
+      </ol>
+    </div>
+    <p class="or">หรือโอนเข้าพร้อมเพย์</p>
+    <div class="pp">
+      <strong id="pp-number"></strong>
+      <button class="ghost" id="copy" type="button">คัดลอกเบอร์</button>
+    </div>
+    <a class="primary" id="paid" href="#">โอนแล้ว ไปรับรูป</a>
+    <div class="row">
+      <button class="linkish" id="change" type="button">เปลี่ยนจำนวน</button>
+      <button class="linkish" id="skip-2" type="button">ข้าม ไปรับรูป</button>
+    </div>
+  </section>
+
+  <!-- ลิงก์เสีย: token หายหรือรูปแบบผิด -->
+  <section class="card" id="step-bad" hidden>
+    <h1>เปิดลิงก์ไม่ได้</h1>
+    <p class="lede">ลองสแกน QR ที่หน้าจอตู้ถ่ายรูปอีกครั้ง</p>
+  </section>
+
+  <p class="note">ระบบไม่เห็นข้อมูลการโอนของคุณ การสนับสนุนเป็นไปตามความสมัครใจ</p>
+</main>
+
+<script>
+  // ค่าจากตู้ถ่ายรูป ฝังมาตอนเสิร์ฟหน้า — ไม่ต้องยิง API ก่อนถึงจะเห็นปุ่มข้าม
+  const BOOTH = __BOOTH_CONFIG__;
+  const $ = (id) => document.getElementById(id);
+
+  // token ของลิงก์แชร์รูปอยู่หลัง # เท่านั้น เบราว์เซอร์ไม่ส่งส่วนนี้ขึ้นเซิร์ฟเวอร์
+  const token = decodeURIComponent(location.hash.slice(1));
+  const valid = /^[A-Za-z0-9]{8,64}$/.test(token);
+  const photosUrl = valid ? `${BOOTH.ncBase}/s/${token}` : null;
+
+  // ใช้ replace เพื่อไม่ให้ปุ่มย้อนกลับพาวนกลับมาหน้านี้
+  const goPhotos = () => { if (photosUrl) location.replace(photosUrl); };
+
+  $('event').textContent = BOOTH.eventName || '';
+
+  function show(step) {
+    for (const id of ['step-ask', 'step-pay', 'step-bad']) $(id).hidden = id !== step;
+    window.scrollTo(0, 0);
+  }
+
+  function pickAmount(amount) {
+    $('err').textContent = '';
+    $('pay-amount').textContent = amount.toLocaleString('th-TH');
+    $('pay-qr').src = `/api/public/pay-qr?amount=${amount}`;
+    show('step-pay');
+  }
+
+  if (!valid) {
+    show('step-bad');
+  } else if (!BOOTH.payEnabled) {
+    goPhotos();
+  } else {
+    for (const amount of BOOTH.amounts) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'amount';
+      button.textContent = amount.toLocaleString('th-TH');
+      const unit = document.createElement('small');
+      unit.textContent = 'บาท';
+      button.append(unit);
+      button.onclick = () => pickAmount(amount);
+      $('amounts').append(button);
+    }
+    const digits = String(BOOTH.promptpay || '');
+    $('pp-number').textContent = digits.length === 10
+      ? `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`
+      : digits;
+    show('step-ask');
+  }
+
+  $('custom').onsubmit = (event) => {
+    event.preventDefault();
+    const amount = Number($('amount').value);
+    if (!Number.isInteger(amount) || amount < 1 || amount > BOOTH.max) {
+      $('err').textContent = `ใส่จำนวนเต็ม 1 ถึง ${BOOTH.max.toLocaleString('th-TH')} บาท`;
+      return;
+    }
+    $('amount').blur();
+    pickAmount(amount);
+  };
+
+  for (const id of ['skip', 'paid']) {
+    $(id).onclick = (event) => { event.preventDefault(); goPhotos(); };
+  }
+  $('skip-2').onclick = goPhotos;
+  $('change').onclick = () => show('step-ask');
+
+  $('copy').onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(String(BOOTH.promptpay));
+      $('copy').textContent = 'คัดลอกแล้ว';
+      $('copy').classList.add('copied');
+    } catch {
+      $('copy').textContent = 'กดค้างที่เบอร์เพื่อคัดลอก';
+    }
+  };
+</script>
+</body>
+</html>

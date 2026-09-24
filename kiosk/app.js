@@ -306,78 +306,6 @@ async function beginShooting(layoutId) {
 
 $('btn-again').onclick = () => api(resetPath(), { method: 'POST' });
 
-// ── สนับสนุนผ่านพร้อมเพย์ (สมัครใจ) ─────────────────────────────────────────
-// ระบบไม่รู้ว่าลูกค้าจ่ายจริงไหม ปุ่ม "จ่ายแล้ว" เชื่อตามที่บอก และไม่จ่ายก็ได้รูปเหมือนกันทุกประการ
-
-function showDoneStep(step) {
-  $('pay-choose').hidden = step !== 'choose';
-  $('pay-qr-box').hidden = step !== 'qr';
-  $('photo-box').hidden = step !== 'photo';
-  if (step === 'choose') renderAmounts();
-}
-
-function renderAmounts() {
-  const grid = $('amount-grid');
-  grid.textContent = '';
-  for (const amount of cfg.payAmounts || []) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'amount-btn';
-    button.textContent = amount.toLocaleString('th-TH');
-    const unit = document.createElement('small');
-    unit.textContent = 'บาท';
-    button.append(unit);
-    button.onclick = () => choosePay(amount);
-    grid.append(button);
-  }
-}
-
-// ลูกค้ายังใช้งานอยู่ ขอให้เซิร์ฟเวอร์เลื่อนเวลากลับหน้าแรกออกไป (ยิงอย่างมากทุก 5 วินาที)
-let lastKeepAlive = 0;
-async function keepAlive() {
-  if (Date.now() - lastKeepAlive < 5000) return;
-  lastKeepAlive = Date.now();
-  try {
-    const result = await api('/api/session/extend', { method: 'POST' });
-    doneDeadline = Date.now() + result.seconds * 1000;
-  } catch { /* หน้าผลงานปิดไปแล้วก็ไม่เป็นไร */ }
-}
-
-async function choosePay(amount) {
-  $('pay-err').textContent = '';
-  keepAlive();
-  try {
-    const result = await api(`/api/pay-qr?amount=${encodeURIComponent(amount)}`);
-    $('pay-qr').src = result.qr;
-    $('pay-amount').textContent = result.amount.toLocaleString('th-TH');
-    showDoneStep('qr');
-  } catch (err) {
-    $('pay-err').textContent = err.message;
-  }
-}
-
-$('amount-custom').onsubmit = (event) => {
-  event.preventDefault();
-  const amount = Number($('amount-input').value);
-  const max = cfg.payMaxAmount || 5000;
-  if (!Number.isInteger(amount) || amount < 1 || amount > max) {
-    $('pay-err').textContent = `ใส่จำนวนเต็ม 1 ถึง ${max.toLocaleString('th-TH')} บาท`;
-    return;
-  }
-  $('amount-input').blur(); // เก็บคีย์บอร์ดลง ไม่งั้นบัง QR
-  choosePay(amount);
-};
-
-$('btn-skip-pay').onclick = () => { keepAlive(); showDoneStep('photo'); };
-$('btn-change-amount').onclick = () => { keepAlive(); showDoneStep('choose'); };
-$('btn-paid').onclick = () => {
-  keepAlive();
-  $('thanks').hidden = false;
-  showDoneStep('photo');
-};
-// แตะตรงไหนก็ได้บนหน้าผลงาน = ยังใช้งานอยู่
-screens.done.addEventListener('pointerdown', keepAlive);
-$('amount-input').addEventListener('input', keepAlive);
 $('btn-back').onclick = () => api(resetPath(), { method: 'POST' });
 
 $('btn-accept').onclick = async () => {
@@ -499,13 +427,9 @@ function applyState(state) {
     if (shownSessionId !== state.session.id) {
       shownSessionId = state.session.id;
       $('qr').src = state.session.qr || '';
-      $('share-url').textContent = state.session.shareUrl || '';
+      $('share-url').textContent = state.session.qrUrl || state.session.shareUrl || '';
       $('card').src = state.session.previews[0] || '';
       doneDeadline = Date.now() + (cfg.reviewSeconds || 90) * 1000;
-      $('thanks').hidden = true;
-      $('amount-input').value = '';
-      $('pay-err').textContent = '';
-      showDoneStep(cfg.payEnabled ? 'choose' : 'photo');
     }
     show('done');
     return;

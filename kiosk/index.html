@@ -76,36 +76,10 @@
 
   <section class="screen" id="screen-done" hidden>
     <div class="done-grid">
-      <!-- ขั้นที่ 1: ชวนสนับสนุน เลือกยอดเอง หรือข้ามไปรับรูปเลย (โชว์เฉพาะตอนตั้งเลขพร้อมเพย์ไว้) -->
-      <div class="pay-box" id="pay-choose" hidden>
-        <p class="pay-title">ชอบรูปไหม?</p>
-        <p class="pay-sub">สนับสนุนทีมงานได้ตามใจ ไม่จ่ายก็รับรูปได้เหมือนกัน</p>
-        <div class="amount-grid" id="amount-grid"></div>
-        <form class="amount-custom" id="amount-custom" novalidate>
-          <input id="amount-input" type="number" inputmode="numeric" min="1" step="1" placeholder="ใส่จำนวนเอง" aria-label="จำนวนเงิน (บาท)">
-          <span class="baht">บาท</span>
-          <button class="ghost-btn" type="submit">ตกลง</button>
-        </form>
-        <p class="pay-err" id="pay-err"></p>
-        <button class="skip-btn" id="btn-skip-pay" type="button">ไม่จ่าย รับรูปเลย</button>
-      </div>
-
-      <!-- ขั้นที่ 2: QR พร้อมเพย์ใส่ยอดที่เลือกไว้ -->
-      <div class="qr-box" id="pay-qr-box" hidden>
-        <img id="pay-qr" alt="QR พร้อมเพย์">
-        <p class="qr-label">สแกนจ่าย <span id="pay-amount"></span> บาท</p>
-        <p class="qr-note">เปิดแอปธนาคาร แล้วสแกน QR นี้</p>
-        <div class="pay-actions">
-          <button class="big-btn" id="btn-paid" type="button">จ่ายแล้ว รับรูป</button>
-          <button class="text-btn dark" id="btn-change-amount" type="button">เปลี่ยนจำนวน</button>
-        </div>
-      </div>
-
-      <!-- ขั้นที่ 3: QR รับรูป + วิดีโอ -->
       <div class="qr-box" id="photo-box">
         <img id="qr" alt="QR code">
         <p class="qr-label">สแกนเพื่อรับรูป + วิดีโอ</p>
-        <p class="qr-note" id="thanks" hidden>ขอบคุณที่สนับสนุนนะ</p>
+        <p class="qr-note">ใช้แอปกล้องในมือถือสแกนได้เลย</p>
         <p class="qr-url" id="share-url"></p>
       </div>
       <div class="result-box">

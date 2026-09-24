@@ -8,7 +8,7 @@ import { config, ROOT, saveEnv } from './config.js';
 import * as watch from './watcher.js';
 import * as nc from './nextcloud.js';
 import { camera } from './camera.js';
-import { bus, snapshot, reset, startSession, captureSlot, deletePhoto, finishNow, discard, fakeShot, scanUnfinishedSessions, recoverSession, ingestIpadPhoto, extendReview } from './session.js';
+import { bus, snapshot, reset, startSession, captureSlot, deletePhoto, finishNow, discard, fakeShot, scanUnfinishedSessions, recoverSession, ingestIpadPhoto } from './session.js';
 import { runPreflightChecks } from './preflight.js';
 import { generateCalibrationSheet } from './calibration.js';
 import { runCleanup } from './retention.js';
@@ -148,9 +148,6 @@ app.get('/api/web/bootstrap', requireWebKiosk, (req, res) => {
       countdown: config.countdown,
       shutterMode: config.shutterMode,
       kioskBuild: KIOSK_BUILD,
-      payEnabled: Boolean(config.promptpayId),
-      payAmounts: config.payAmounts,
-      payMaxAmount: config.payMaxAmount,
       eventName: config.eventName,
       reviewSeconds: config.reviewSeconds,
       cameraFacing: config.webCameraFacing,
@@ -267,9 +264,6 @@ app.get('/api/ipad/bootstrap', requireIpadToken, (req, res) => {
       countdown: config.countdown,
       shutterMode: config.shutterMode,
       kioskBuild: KIOSK_BUILD,
-      payEnabled: Boolean(config.promptpayId),
-      payAmounts: config.payAmounts,
-      payMaxAmount: config.payMaxAmount,
       eventName: config.eventName,
       reviewSeconds: config.reviewSeconds,
     },
@@ -387,9 +381,6 @@ app.get('/api/config', (req, res) => {
     countdown: config.countdown,
     shutterMode: config.shutterMode,
     kioskBuild: KIOSK_BUILD,
-    payEnabled: Boolean(config.promptpayId),
-    payAmounts: config.payAmounts,
-    payMaxAmount: config.payMaxAmount,
     webCameraFacing: config.webCameraFacing,
     webMirror: config.webMirror,
     cameraFacing: config.webCameraFacing,
@@ -461,9 +452,33 @@ app.get('/api/layout/:id/preview.jpg', async (req, res) => {
   }
 });
 
-// QR พร้อมเพย์ใส่ยอดที่ลูกค้าเลือก — สร้างสดทุกครั้งเพราะยอดเปลี่ยนตามที่กด
-// ไม่ส่งเลขพร้อมเพย์ดิบออกไปให้หน้าเว็บ ส่งเฉพาะรูป QR ที่ใช้จ่ายได้เท่านั้น
-app.get('/api/pay-qr', requirePairedWhenSelfService, async (req, res) => {
+// ── หน้าที่ลูกค้าเปิดจาก QR บนจอ (สาธารณะ ผ่าน Cloudflare Tunnel) ─────────────
+// ชวนสนับสนุนผ่านพร้อมเพย์ มีปุ่มข้ามไปรับรูปได้ทันที
+// token ของลิงก์รูปอยู่หลัง # ในที่อยู่ ไม่ถูกส่งมาที่นี่ หน้านี้จึงไม่รู้และไม่ต้องรู้ว่าเป็นเซสชันไหน
+const LANDING_TEMPLATE = fs.readFileSync(path.join(ROOT, 'server', 'landing.html'), 'utf8');
+
+app.get('/r', (req, res) => {
+  const boothConfig = {
+    eventName: config.eventName,
+    ncBase: config.nc.base,
+    payEnabled: Boolean(config.promptpayId),
+    amounts: config.payAmounts,
+    max: config.payMaxAmount,
+    // เลขพร้อมเพย์ต้องโชว์ให้ลูกค้าคัดลอกไปโอนเองได้ (สแกน QR บนจอมือถือตัวเองไม่ได้)
+    promptpay: config.promptpayId ? String(config.promptpayId).replace(/\D/g, '') : '',
+  };
+  // กัน </script> ในค่าที่ฝังลงหน้า
+  const json = JSON.stringify(boothConfig).replace(/</g, '\\u003c');
+  res
+    .type('html')
+    .set('Cache-Control', 'no-store')
+    .set('Referrer-Policy', 'no-referrer')
+    .set('X-Robots-Tag', 'noindex')
+    .send(LANDING_TEMPLATE.replace('__BOOTH_CONFIG__', json));
+});
+
+// รูป QR พร้อมเพย์ใส่ยอดที่ลูกค้าเลือก — ส่งเป็นไฟล์ภาพจริง ลูกค้าจะกดค้างบันทึกลงอัลบั้มได้
+app.get('/api/public/pay-qr', async (req, res) => {
   if (!config.promptpayId) return res.status(404).json({ ok: false, error: 'ยังไม่ได้ตั้งเลขพร้อมเพย์' });
   const amount = Number(req.query.amount);
   if (!Number.isFinite(amount) || amount < 1 || amount > config.payMaxAmount) {
@@ -471,20 +486,12 @@ app.get('/api/pay-qr', requirePairedWhenSelfService, async (req, res) => {
   }
   const rounded = Math.round(amount * 100) / 100;
   try {
-    const payload = promptPayPayload(config.promptpayId, rounded);
-    const qr = await QRCode.toDataURL(payload, { width: 640, margin: 1, errorCorrectionLevel: 'M' });
-    res.set('Cache-Control', 'no-store').json({ ok: true, amount: rounded, qr });
+    const png = await QRCode.toBuffer(promptPayPayload(config.promptpayId, rounded), {
+      width: 720, margin: 2, errorCorrectionLevel: 'M',
+    });
+    res.type('png').set('Cache-Control', 'no-store').send(png);
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
-  }
-});
-
-// ลูกค้ายังใช้งานหน้าผลงานอยู่ — เลื่อนเวลากลับหน้าแรกออกไป
-app.post('/api/session/extend', requirePairedWhenSelfService, (req, res) => {
-  try {
-    res.json({ ok: true, seconds: extendReview() });
-  } catch (err) {
-    res.status(409).json({ ok: false, error: err.message });
   }
 });
 

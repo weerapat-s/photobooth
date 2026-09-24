@@ -81,6 +81,7 @@ export function snapshot(extra = {}) {
       previews: slots.filter((slot) => slot.preview).map((slot) => slot.preview),
       activePreview: state.shot > 0 ? slots[state.shot - 1]?.preview || null : null,
       shareUrl: s.shareUrl || null,
+      qrUrl: s.qrUrl || s.shareUrl || null,
       qr: s.qr || null,
       startedAt: s.startedAt,
       layout: s.layout || null,
@@ -398,7 +399,8 @@ async function finish(reason) {
     s.shareUrl = share.url;
     s.shareId = share.shareId;
   }
-  s.qr = await QRCode.toDataURL(s.shareUrl, { width: 640, margin: 1, errorCorrectionLevel: 'M' });
+  s.qrUrl = customerLandingUrl(s.shareUrl) || s.shareUrl;
+  s.qr = await QRCode.toDataURL(s.qrUrl, { width: 640, margin: 1, errorCorrectionLevel: 'M' });
 
   emit({ phase: 'done', message: '' });
   armReviewTimer(s.id);
@@ -413,6 +415,19 @@ async function finish(reason) {
   }
 }
 
+/**
+ * ลิงก์ที่ใส่ใน QR บนจอ: หน้าชวนสนับสนุนบนมือถือลูกค้า ซึ่งมีปุ่มข้ามไปรับรูปได้ทันที
+ *
+ * ส่งไปแค่ token ของลิงก์แชร์เซสชันนั้น ใส่ไว้หลังเครื่องหมาย # ซึ่งเบราว์เซอร์ไม่ส่งขึ้นเซิร์ฟเวอร์
+ * ตัวตู้และ tunnel จึงไม่เห็นว่าใครเปิดรูปของเซสชันไหน และหน้านั้นประกอบลิงก์ NAS เองจาก token
+ * ไม่รับ URL เต็มทางลิงก์ เพราะจะกลายเป็นช่องให้คนเอาโดเมนของตู้ไปทำลิงก์หลอกพาไปเว็บอื่น
+ */
+function customerLandingUrl(shareUrl) {
+  if (!config.publicUrl || !config.promptpayId || !shareUrl) return null;
+  const match = String(shareUrl).match(/\/s\/([A-Za-z0-9]{8,64})$/);
+  return match ? `${config.publicUrl}/r#${match[1]}` : null;
+}
+
 /** นับถอยหลังกลับหน้าแรกหลังโชว์ผลงาน */
 function armReviewTimer(sessionId) {
   clearTimeout(reviewTimer);
@@ -420,15 +435,6 @@ function armReviewTimer(sessionId) {
     if (state.phase === 'done' && state.session?.id === sessionId) reset();
   }, config.reviewSeconds * 1000);
   return config.reviewSeconds;
-}
-
-/**
- * ลูกค้ายังกดอะไรอยู่บนหน้าผลงาน (เลือกยอดเงิน / กำลังสแกนจ่าย) ให้เริ่มนับถอยหลังใหม่
- * ไม่งั้นจอเด้งกลับหน้าแรกกลางคันระหว่างเปิดแอปธนาคาร แล้วลูกค้าก็ไม่ได้ QR รับรูป
- */
-export function extendReview() {
-  if (state.phase !== 'done' || !state.session) throw new Error('ไม่มีหน้าผลงานที่เปิดอยู่');
-  return armReviewTimer(state.session.id);
 }
 
 export function reset() {

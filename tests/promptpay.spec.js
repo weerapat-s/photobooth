@@ -54,66 +54,63 @@ async function run() {
   assert(!isValidPromptPayId('1812345678'), 'เบอร์มือถือต้องขึ้นต้นด้วย 0');
   console.log('Payload matches the reference library.');
 
-  // ปิดอยู่ถ้าไม่ได้ตั้งเลขพร้อมเพย์ — หน้าจอต้องข้ามขั้นจ่ายเงินไปเลย
-  const run1 = startServer({ PROMPTPAY_ID: '' });
+  // ปิดอยู่ถ้าไม่ได้ตั้งเลขพร้อมเพย์ — หน้าที่ลูกค้าเปิดต้องพาไปรับรูปทันที
+  const run1 = startServer({ PROMPTPAY_ID: '', PUBLIC_URL: 'https://booth.example.test' });
   try {
     await waitUp(run1.log);
-    const cfg = await api('/api/config');
-    assert.strictEqual(cfg.body.payEnabled, false, 'ไม่ตั้งเลขพร้อมเพย์ = ปิดการรับเงิน');
-    assert.strictEqual((await api('/api/pay-qr?amount=50')).status, 404);
+    const page = await api('/r');
+    assert.strictEqual(page.status, 200);
+    assert.match(page.body, /"payEnabled":false/, 'ไม่ตั้งเลขพร้อมเพย์ = ข้ามหน้าสนับสนุน');
+    assert.strictEqual((await api('/api/public/pay-qr?amount=50')).status, 404);
   } finally {
     run1.server.kill();
   }
   await sleep(800);
 
-  const run2 = startServer({ PROMPTPAY_ID: '0801234567', PAY_AMOUNTS: '20,50,100', PAY_MAX_AMOUNT: '5000' });
+  const run2 = startServer({
+    PROMPTPAY_ID: '0801234567', PAY_AMOUNTS: '20,50,100', PAY_MAX_AMOUNT: '5000',
+    PUBLIC_URL: 'https://booth.example.test', EVENT_NAME: 'Test </script><b>x</b>',
+  });
   try {
     await waitUp(run2.log);
-    const cfg = await api('/api/config');
-    assert.strictEqual(cfg.body.payEnabled, true);
-    assert.deepStrictEqual(cfg.body.payAmounts, [20, 50, 100]);
-    assert(!JSON.stringify(cfg.body).includes('0801234567'), 'ห้ามส่งเลขพร้อมเพย์ดิบออกทาง /api/config');
+    const page = await fetch(`http://127.0.0.1:${PORT}/r`);
+    const html = await page.text();
+    assert.strictEqual(page.headers.get('cache-control'), 'no-store');
+    assert.match(html, /"payEnabled":true/);
+    assert.match(html, /"amounts":\[20,50,100\]/);
+    assert(!html.includes('__BOOTH_CONFIG__'), 'ต้องฝังค่าลงหน้าแล้ว');
+    // ชื่องานมี </script> ต้องไม่หลุดออกจากแท็ก script
+    assert(!/Test <\/script>/.test(html), 'ค่าที่ฝังลงหน้าต้อง escape < แล้ว');
+    assert(html.includes('Test \\u003c/script>'), 'escaped script tag');
 
-    const ok = await api('/api/pay-qr?amount=50');
-    assert.strictEqual(ok.status, 200);
-    assert.strictEqual(ok.body.amount, 50);
-    assert.match(ok.body.qr, /^data:image\/png;base64,/, 'ต้องได้รูป QR กลับมา');
+    const qr = await fetch(`http://127.0.0.1:${PORT}/api/public/pay-qr?amount=50`);
+    assert.strictEqual(qr.status, 200);
+    assert.strictEqual(qr.headers.get('content-type'), 'image/png');
+    const bytes = Buffer.from(await qr.arrayBuffer());
+    assert.strictEqual(bytes.subarray(1, 4).toString(), 'PNG', 'ต้องได้ไฟล์ PNG จริง บันทึกลงอัลบั้มได้');
 
     for (const bad of ['0', '-5', 'abc', '5001']) {
-      assert.strictEqual((await api(`/api/pay-qr?amount=${bad}`)).status, 400, `ยอด ${bad} ต้องถูกปฏิเสธ`);
+      assert.strictEqual((await api(`/api/public/pay-qr?amount=${bad}`)).status, 400, `ยอด ${bad} ต้องถูกปฏิเสธ`);
     }
-
-    // ต่อเวลาหน้าผลงานได้เฉพาะตอนที่หน้าผลงานเปิดอยู่
-    assert.strictEqual((await api('/api/session/extend', { method: 'POST', body: '{}' })).status, 409);
-    console.log('Pay QR endpoint and guards passed.');
+    console.log('Landing page and public pay QR passed.');
   } finally {
     run2.server.kill();
   }
-
   await sleep(800);
 
-  // ลูกค้ากำลังเปิดแอปธนาคารอยู่ จอต้องไม่เด้งกลับหน้าแรกกลางคัน
-  // ตั้งเวลาหน้าผลงานไว้ 8 วินาที แล้วต่อเวลาที่วินาทีที่ 5 — ถ้าต่อไม่ได้จริง วินาทีที่ 10 จะกลับหน้าแรกไปแล้ว
-  const run3 = startServer({ PROMPTPAY_ID: '0801234567', REVIEW_SECONDS: '8', SHOTS: '1', PRINT_SHOTS: '1' });
+  // QR บนจอต้องชี้หน้าชวนสนับสนุน โดยส่งแค่ token ของลิงก์แชร์เซสชันนั้นหลัง #
+  const run3 = startServer({ PROMPTPAY_ID: '0801234567', PUBLIC_URL: 'https://booth.example.test/', SHOTS: '1', PRINT_SHOTS: '1' });
   try {
     await waitUp(run3.log);
     assert.strictEqual((await api('/api/start', { method: 'POST', body: '{}' })).status, 200);
     await api('/api/mock-shot', { method: 'POST', body: '{}' });
     const finished = await api('/api/finish', { method: 'POST', body: '{}' });
     assert.strictEqual(finished.status, 200, `ปิดเซสชันไม่ได้: ${JSON.stringify(finished.body)}`);
-    assert.strictEqual((await api('/api/state')).body.phase, 'done');
-
-    await sleep(5000);
-    const extended = await api('/api/session/extend', { method: 'POST', body: '{}' });
-    assert.strictEqual(extended.status, 200);
-    assert.strictEqual(extended.body.seconds, 8);
-
-    await sleep(5000);
-    assert.strictEqual((await api('/api/state')).body.phase, 'done', 'ต่อเวลาแล้วต้องยังอยู่หน้าผลงาน');
-
-    await sleep(5000);
-    assert.strictEqual((await api('/api/state')).body.phase, 'idle', 'พ้นเวลาที่ต่อแล้วต้องกลับหน้าแรกเอง');
-    console.log('Review timer extension passed.');
+    const { session } = (await api('/api/state')).body;
+    const token = session.shareUrl.match(/\/s\/([A-Za-z0-9]+)$/)?.[1];
+    assert(token, `ลิงก์แชร์ต้องเป็นแชร์แยกของเซสชัน: ${session.shareUrl}`);
+    assert.strictEqual(session.qrUrl, `https://booth.example.test/r#${token}`);
+    console.log('Booth QR points at the landing page.');
   } finally {
     run3.server.kill();
   }

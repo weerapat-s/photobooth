@@ -50,6 +50,9 @@ export const config = {
   payAmounts: String(process.env.PAY_AMOUNTS || '20,50,100')
     .split(',').map((v) => Number(v.trim())).filter((v) => Number.isFinite(v) && v > 0),
   payMaxAmount: num(process.env.PAY_MAX_AMOUNT, 5000),
+  // ที่อยู่สาธารณะของตู้ (ผ่าน Cloudflare Tunnel) — QR บนจอจะพาไปหน้าชวนสนับสนุนบนมือถือลูกค้าก่อน
+  // เว้นว่าง = QR ชี้ไปโฟลเดอร์รูปบน NAS ตรง ๆ แบบเดิม
+  publicUrl: (process.env.PUBLIC_URL || '').replace(/\/$/, ''),
 
   ffmpeg: process.env.FFMPEG || String.raw`C:\Program Files (x86)\digiCamControl\ffmpeg.exe`,
   videoSeconds: num(process.env.VIDEO_SECONDS, 6),
