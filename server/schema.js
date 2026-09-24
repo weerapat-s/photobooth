@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { isValidPromptPayId } from './promptpay.js';
 
 export function validateConfigPatch(patch) {
   const errors = [];
@@ -76,6 +77,20 @@ export function validateConfigPatch(patch) {
       case 'KIOSK_MODE': {
         if (!['operator', 'self_service'].includes(strVal)) {
           errors.push(`KIOSK_MODE ต้องเป็น 'operator' หรือ 'self_service' (ได้รับ: ${val})`);
+        }
+        break;
+      }
+      case 'PROMPTPAY_ID': {
+        // เว้นว่างได้ = ปิดการรับเงิน
+        if (strVal && !isValidPromptPayId(strVal)) {
+          errors.push(`PROMPTPAY_ID ต้องเป็นเบอร์มือถือ 10 หลัก เลขบัตร 13 หลัก หรือ e-Wallet 15 หลัก (ได้รับ: ${val})`);
+        }
+        break;
+      }
+      case 'PAY_AMOUNTS': {
+        const list = strVal.split(',').map((v) => v.trim()).filter(Boolean);
+        if (!list.length || list.length > 6 || list.some((v) => !/^\d{1,5}$/.test(v) || Number(v) < 1)) {
+          errors.push(`PAY_AMOUNTS ต้องเป็นจำนวนเต็มบาท 1-6 ค่า คั่นด้วยจุลภาค เช่น 20,50,100 (ได้รับ: ${val})`);
         }
         break;
       }

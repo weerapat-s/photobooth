@@ -401,11 +401,7 @@ async function finish(reason) {
   s.qr = await QRCode.toDataURL(s.shareUrl, { width: 640, margin: 1, errorCorrectionLevel: 'M' });
 
   emit({ phase: 'done', message: '' });
-
-  clearTimeout(reviewTimer);
-  reviewTimer = setTimeout(() => {
-    if (state.phase === 'done' && state.session?.id === s.id) reset();
-  }, config.reviewSeconds * 1000);
+  armReviewTimer(s.id);
 
   // ช็อตที่เข้ามาระหว่างประมวลผล = เซสชันถัดไป (โหมดเฝ้าโฟลเดอร์)
   if (buffered.length) {
@@ -415,6 +411,24 @@ async function finish(reason) {
       for (const file of next) addPhoto(file).catch(reportError);
     });
   }
+}
+
+/** นับถอยหลังกลับหน้าแรกหลังโชว์ผลงาน */
+function armReviewTimer(sessionId) {
+  clearTimeout(reviewTimer);
+  reviewTimer = setTimeout(() => {
+    if (state.phase === 'done' && state.session?.id === sessionId) reset();
+  }, config.reviewSeconds * 1000);
+  return config.reviewSeconds;
+}
+
+/**
+ * ลูกค้ายังกดอะไรอยู่บนหน้าผลงาน (เลือกยอดเงิน / กำลังสแกนจ่าย) ให้เริ่มนับถอยหลังใหม่
+ * ไม่งั้นจอเด้งกลับหน้าแรกกลางคันระหว่างเปิดแอปธนาคาร แล้วลูกค้าก็ไม่ได้ QR รับรูป
+ */
+export function extendReview() {
+  if (state.phase !== 'done' || !state.session) throw new Error('ไม่มีหน้าผลงานที่เปิดอยู่');
+  return armReviewTimer(state.session.id);
 }
 
 export function reset() {

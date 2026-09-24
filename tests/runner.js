@@ -10,6 +10,7 @@ const testFiles = [
   'tests/validation.spec.js',
   'tests/camera-guard.spec.js',
   'tests/manual-shutter.spec.js',
+  'tests/promptpay.spec.js',
   'tests/recovery.spec.js',
   'tests/ipad-flow.spec.js',
   'tests/web-flow.spec.js',

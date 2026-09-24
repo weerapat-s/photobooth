@@ -8,11 +8,13 @@ import { config, ROOT, saveEnv } from './config.js';
 import * as watch from './watcher.js';
 import * as nc from './nextcloud.js';
 import { camera } from './camera.js';
-import { bus, snapshot, reset, startSession, captureSlot, deletePhoto, finishNow, discard, fakeShot, scanUnfinishedSessions, recoverSession, ingestIpadPhoto } from './session.js';
+import { bus, snapshot, reset, startSession, captureSlot, deletePhoto, finishNow, discard, fakeShot, scanUnfinishedSessions, recoverSession, ingestIpadPhoto, extendReview } from './session.js';
 import { runPreflightChecks } from './preflight.js';
 import { generateCalibrationSheet } from './calibration.js';
 import { runCleanup } from './retention.js';
 import { availableLayouts, customerChooses, defaultLayout, findLayout } from './layouts.js';
+import { promptPayPayload } from './promptpay.js';
+import QRCode from 'qrcode';
 
 // ลายเซ็นของไฟล์หน้าจอ ใช้ให้เครื่องลูกข่ายรู้ว่าโค้ดที่ตัวเองรันอยู่เก่ากว่าที่เซิร์ฟเวอร์เสิร์ฟแล้ว
 // เคยเจอ: ตอนเซิร์ฟเวอร์ดับ service worker ของ iPad fallback ไปเสิร์ฟ app.js ตัวเก่า
@@ -146,6 +148,9 @@ app.get('/api/web/bootstrap', requireWebKiosk, (req, res) => {
       countdown: config.countdown,
       shutterMode: config.shutterMode,
       kioskBuild: KIOSK_BUILD,
+      payEnabled: Boolean(config.promptpayId),
+      payAmounts: config.payAmounts,
+      payMaxAmount: config.payMaxAmount,
       eventName: config.eventName,
       reviewSeconds: config.reviewSeconds,
       cameraFacing: config.webCameraFacing,
@@ -262,6 +267,9 @@ app.get('/api/ipad/bootstrap', requireIpadToken, (req, res) => {
       countdown: config.countdown,
       shutterMode: config.shutterMode,
       kioskBuild: KIOSK_BUILD,
+      payEnabled: Boolean(config.promptpayId),
+      payAmounts: config.payAmounts,
+      payMaxAmount: config.payMaxAmount,
       eventName: config.eventName,
       reviewSeconds: config.reviewSeconds,
     },
@@ -379,6 +387,9 @@ app.get('/api/config', (req, res) => {
     countdown: config.countdown,
     shutterMode: config.shutterMode,
     kioskBuild: KIOSK_BUILD,
+    payEnabled: Boolean(config.promptpayId),
+    payAmounts: config.payAmounts,
+    payMaxAmount: config.payMaxAmount,
     webCameraFacing: config.webCameraFacing,
     webMirror: config.webMirror,
     cameraFacing: config.webCameraFacing,
@@ -447,6 +458,33 @@ app.get('/api/layout/:id/preview.jpg', async (req, res) => {
     res.type('jpeg').set('Cache-Control', 'no-cache').send(buf);
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// QR พร้อมเพย์ใส่ยอดที่ลูกค้าเลือก — สร้างสดทุกครั้งเพราะยอดเปลี่ยนตามที่กด
+// ไม่ส่งเลขพร้อมเพย์ดิบออกไปให้หน้าเว็บ ส่งเฉพาะรูป QR ที่ใช้จ่ายได้เท่านั้น
+app.get('/api/pay-qr', requirePairedWhenSelfService, async (req, res) => {
+  if (!config.promptpayId) return res.status(404).json({ ok: false, error: 'ยังไม่ได้ตั้งเลขพร้อมเพย์' });
+  const amount = Number(req.query.amount);
+  if (!Number.isFinite(amount) || amount < 1 || amount > config.payMaxAmount) {
+    return res.status(400).json({ ok: false, error: `ยอดต้องอยู่ระหว่าง 1 ถึง ${config.payMaxAmount} บาท` });
+  }
+  const rounded = Math.round(amount * 100) / 100;
+  try {
+    const payload = promptPayPayload(config.promptpayId, rounded);
+    const qr = await QRCode.toDataURL(payload, { width: 640, margin: 1, errorCorrectionLevel: 'M' });
+    res.set('Cache-Control', 'no-store').json({ ok: true, amount: rounded, qr });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ลูกค้ายังใช้งานหน้าผลงานอยู่ — เลื่อนเวลากลับหน้าแรกออกไป
+app.post('/api/session/extend', requirePairedWhenSelfService, (req, res) => {
+  try {
+    res.json({ ok: true, seconds: extendReview() });
+  } catch (err) {
+    res.status(409).json({ ok: false, error: err.message });
   }
 });
 

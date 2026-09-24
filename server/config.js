@@ -44,6 +44,13 @@ export const config = {
   captureDir: process.env.CAPTURE_DIR || String.raw`C:\photobooth-captures`,
   captureTimeout: num(process.env.CAPTURE_TIMEOUT, 25000),
 
+  // สนับสนุนผ่านพร้อมเพย์ (ตามใจลูกค้า ไม่บังคับ) — เว้นว่างไว้ = ปิด ข้ามไปหน้ารับรูปเลย
+  promptpayId: process.env.PROMPTPAY_ID || '',
+  // ปุ่มยอดเงินที่ให้กดเลือก (บาท) ลูกค้ายังพิมพ์ยอดเองได้อีกทาง
+  payAmounts: String(process.env.PAY_AMOUNTS || '20,50,100')
+    .split(',').map((v) => Number(v.trim())).filter((v) => Number.isFinite(v) && v > 0),
+  payMaxAmount: num(process.env.PAY_MAX_AMOUNT, 5000),
+
   ffmpeg: process.env.FFMPEG || String.raw`C:\Program Files (x86)\digiCamControl\ffmpeg.exe`,
   videoSeconds: num(process.env.VIDEO_SECONDS, 6),
 
@@ -105,6 +112,8 @@ const runtimeCheck = validateConfigPatch({
   CAPTURE_SOURCE: config.captureSource,
   KIOSK_MODE: config.kioskMode,
   SHUTTER: config.shutterMode,
+  PROMPTPAY_ID: config.promptpayId,
+  PAY_AMOUNTS: config.payAmounts.join(','),
   CARD_LAYOUT_CHOICE: config.cardLayoutChoice,
   WEB_CAMERA_FACING: config.webCameraFacing,
   WEB_MIRROR: config.webMirror,
@@ -142,4 +151,8 @@ export function saveEnv(patch) {
   if ('WEB_MIRROR' in patch) config.webMirror = String(patch.WEB_MIRROR).toLowerCase() === 'true';
   if ('COUNTDOWN' in patch) config.countdown = Number(patch.COUNTDOWN);
   if ('SHUTTER' in patch) config.shutterMode = String(patch.SHUTTER);
+  if ('PROMPTPAY_ID' in patch) config.promptpayId = String(patch.PROMPTPAY_ID);
+  if ('PAY_AMOUNTS' in patch) {
+    config.payAmounts = String(patch.PAY_AMOUNTS).split(',').map((v) => Number(v.trim())).filter((v) => v > 0);
+  }
 }
