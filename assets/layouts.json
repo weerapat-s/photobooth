@@ -1,5 +1,12 @@
 [
   {
+    "id": "graduation",
+    "name": "รับปริญญา",
+    "template": "assets/graduation-template.png",
+    "half": "full",
+    "scale": 1
+  },
+  {
     "id": "expo-strip",
     "name": "KMITL EXPO",
     "template": "assets/kmitl-expo-template.png",
