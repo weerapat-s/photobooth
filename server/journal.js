@@ -10,6 +10,8 @@ export function saveJournal(sessionData) {
   const payload = {
     id: sessionData.id,
     schemaVersion: 1,
+    // ต้องเก็บไว้ ไม่งั้นลิงก์รับรูปที่ลูกค้าถือไปใช้ไม่ได้เมื่อเปิดโปรแกรมใหม่
+    publicToken: sessionData.publicToken || null,
     phase: sessionData.phase || 'shooting',
     photos: sessionData.photos || [],
     previews: sessionData.previews || [],
@@ -21,6 +23,9 @@ export function saveJournal(sessionData) {
     remoteDir: sessionData.remoteDir || null,
     shareId: sessionData.shareId || null,
     shareUrl: sessionData.shareUrl || null,
+    qrUrl: sessionData.qrUrl || null,
+    layout: sessionData.layout || null,
+    cloudError: sessionData.cloudError || null,
     lastError: sessionData.lastError || null,
     startedAt: sessionData.startedAt || Date.now(),
     updatedAt: new Date().toISOString(),

@@ -53,6 +53,9 @@ export const config = {
   // ที่อยู่สาธารณะของตู้ (ผ่าน Cloudflare Tunnel) — QR บนจอจะพาไปหน้าชวนสนับสนุนบนมือถือลูกค้าก่อน
   // เว้นว่าง = QR ชี้ไปโฟลเดอร์รูปบน NAS ตรง ๆ แบบเดิม
   publicUrl: (process.env.PUBLIC_URL || '').replace(/\/$/, ''),
+  // ถ้าคลาวด์ไม่ตอบภายในเวลานี้ ถือว่าใช้ไม่ได้ แล้วข้ามไปเลย
+  // ลูกค้าไม่ควรต้องยืนรอเพราะ NAS ล่ม ในเมื่อรูปพร้อมส่งจากตู้อยู่แล้ว
+  cloudProbeMs: num(process.env.CLOUD_PROBE_MS, 4000),
 
   ffmpeg: process.env.FFMPEG || String.raw`C:\Program Files (x86)\digiCamControl\ffmpeg.exe`,
   videoSeconds: num(process.env.VIDEO_SECONDS, 6),

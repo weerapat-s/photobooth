@@ -2,11 +2,13 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import QRCode from 'qrcode';
+import { randomBytes } from 'node:crypto';
 import { config } from './config.js';
 import { camera } from './camera.js';
 import { watcher, mockShot, start as startWatch, stop as stopWatch } from './watcher.js';
 import { composeCard, makePreview } from './compose.js';
 import { resolveLayout } from './layouts.js';
+import { forgetCache } from './customer.js';
 import { makeVideoFromFrames } from './video.js';
 import * as nc from './nextcloud.js';
 import { saveJournal, loadJournal, scanUnfinishedSessions, filterExistingPaths } from './journal.js';
@@ -85,6 +87,8 @@ export function snapshot(extra = {}) {
       qr: s.qr || null,
       startedAt: s.startedAt,
       layout: s.layout || null,
+      files: localFileList(s),
+      cloudError: s.cloudError || null,
     },
     ...extra,
   };
@@ -113,6 +117,8 @@ function newSession(layoutId = null) {
   const id = `${config.boothName}-${stamp()}-${randomHex}`;
   return {
     id,
+    // กุญแจเดาไม่ได้สำหรับหน้ารับรูปของลูกค้า — ชื่อเซสชันเดาได้ (ชื่อบูท+เวลา) จึงใช้เป็นกุญแจไม่ได้
+    publicToken: randomBytes(16).toString('hex'),
     localDir: path.join(config.sessionsDir, id),
     rawDir: path.join(config.captureDir, id),
     startedAt: Date.now(),
@@ -368,40 +374,57 @@ async function finish(reason) {
     s.gifFile = video.gif || null;
   }
 
-  emit({ message: 'กำลังอัปโหลดขึ้นคลาวด์...' });
-  const remoteDir = s.remoteDir || `${nc.NC_ROOT}/${s.id}`;
-  s.remoteDir = remoteDir;
-  await nc.ensureDir(remoteDir);
-  const existingRemoteNames = new Set(
-    (await nc.list(remoteDir).catch(() => [])).filter((item) => !item.isDir).map((item) => item.name),
-  );
+  // รูปพร้อมส่งให้ลูกค้าแล้วจากเครื่องนี้ การอัปขึ้นคลาวด์เป็นการสำรองไว้ทีหลัง
+  // NAS ล่มต้องไม่ทำให้ลูกค้าไม่ได้รูป จึงไม่โยน error ออกไป แต่บันทึกไว้ให้ช่างเห็น
+  s.cloudError = null;
+  try {
+    // เช็คสั้น ๆ ก่อน ถ้าคลาวด์ไม่ตอบก็ข้ามทันที ไม่งั้นติด timeout ยาวทีละคำขอ
+    const reachable = await Promise.race([
+      nc.health().then((result) => result.ok),
+      new Promise((resolve) => setTimeout(() => resolve(false), config.cloudProbeMs)),
+    ]);
+    if (!reachable) throw new Error('คลาวด์ไม่ตอบ');
+    emit({ message: 'กำลังอัปโหลดขึ้นคลาวด์...' });
+    const remoteDir = s.remoteDir || `${nc.NC_ROOT}/${s.id}`;
+    s.remoteDir = remoteDir;
+    await nc.ensureDir(remoteDir);
+    const existingRemoteNames = new Set(
+      (await nc.list(remoteDir).catch(() => [])).filter((item) => !item.isDir).map((item) => item.name),
+    );
 
-  const uploads = [[s.cardFile, 'card.jpg'], [s.videoFile, 'video.mp4']];
-  if (s.gifFile) uploads.push([s.gifFile, 'video.gif']);
-  s.photos.forEach((p, i) => {
-    if (p) uploads.push([p, `photo-${i + 1}${path.extname(p).toLowerCase()}`]);
-  });
-  s.uploaded = (Array.isArray(s.uploaded) ? s.uploaded : []).filter((name) => existingRemoteNames.has(name));
-  if (s.forceUploadAll) s.uploaded = [];
-  for (const [local, name] of uploads) {
-    if (s.uploaded.includes(name)) continue;
-    await nc.uploadFile(local, `${remoteDir}/${name}`);
-    s.uploaded.push(name);
-    emit({ message: `อัปโหลด ${name} แล้ว` });
-  }
-  s.forceUploadAll = false;
+    const uploads = [[s.cardFile, 'card.jpg'], [s.videoFile, 'video.mp4']];
+    if (s.gifFile) uploads.push([s.gifFile, 'video.gif']);
+    s.photos.forEach((p, i) => {
+      if (p) uploads.push([p, `photo-${i + 1}${path.extname(p).toLowerCase()}`]);
+    });
+    s.uploaded = (Array.isArray(s.uploaded) ? s.uploaded : []).filter((name) => existingRemoteNames.has(name));
+    if (s.forceUploadAll) s.uploaded = [];
+    for (const [local, name] of uploads) {
+      if (s.uploaded.includes(name)) continue;
+      await nc.uploadFile(local, `${remoteDir}/${name}`);
+      s.uploaded.push(name);
+      emit({ message: `อัปโหลด ${name} แล้ว` });
+    }
+    s.forceUploadAll = false;
 
-  // ต้องเป็น share แยกต่อเซสชัน (root อยู่ที่โฟลเดอร์นี้เอง) ไม่ใช่ subfolder ของ share หลัก
-  // ไม่งั้นลูกค้ากดขึ้น breadcrumb แล้วเห็นเซสชันคนอื่นได้ — ห้ามเด็ดขาด จึงไม่ fallback เงียบ ๆ
-  if (!s.shareUrl) {
-    const existingShares = await nc.findSessionShares(remoteDir).catch(() => []);
-    const share = existingShares[0] || await nc.createSessionShare(remoteDir);
-    s.shareUrl = share.url;
-    s.shareId = share.shareId;
+    // ต้องเป็น share แยกต่อเซสชัน (root อยู่ที่โฟลเดอร์นี้เอง) ไม่ใช่ subfolder ของ share หลัก
+    // ไม่งั้นลูกค้ากดขึ้น breadcrumb แล้วเห็นเซสชันคนอื่นได้ — ห้ามเด็ดขาด จึงไม่ fallback เงียบ ๆ
+    if (!s.shareUrl) {
+      const existingShares = await nc.findSessionShares(remoteDir).catch(() => []);
+      const share = existingShares[0] || await nc.createSessionShare(remoteDir);
+      s.shareUrl = share.url;
+      s.shareId = share.shareId;
+    }
+  } catch (err) {
+    s.cloudError = err.message;
+    console.error(`[session] อัปขึ้นคลาวด์ไม่สำเร็จ ${s.id} — ลูกค้ายังรับรูปจากตู้ได้:`, err.message);
   }
-  s.qrUrl = customerLandingUrl(s.shareUrl) || s.shareUrl;
+
+  s.qrUrl = customerLandingUrl(s) || s.shareUrl;
   s.qr = await QRCode.toDataURL(s.qrUrl, { width: 640, margin: 1, errorCorrectionLevel: 'M' });
 
+  // เซสชันที่เพิ่งปิดต้องเปิดรับรูปได้ทันที ไม่ต้องรอแคชหมดอายุ
+  forgetCache();
   emit({ phase: 'done', message: '' });
   armReviewTimer(s.id);
 
@@ -416,16 +439,32 @@ async function finish(reason) {
 }
 
 /**
+ * ไฟล์ที่ลูกค้าโหลดได้ พร้อมชื่อที่จะใช้ตอนบันทึก
+ * อ่านจากโฟลเดอร์เซสชันในเครื่องนี้ ไม่ต้องรอ NAS
+ */
+export function localFileList(s) {
+  if (!s) return [];
+  const list = [];
+  if (s.cardFile) list.push({ kind: 'card', name: 'card.jpg', path: s.cardFile });
+  if (s.videoFile) list.push({ kind: 'video', name: 'video.mp4', path: s.videoFile });
+  if (s.gifFile) list.push({ kind: 'gif', name: 'video.gif', path: s.gifFile });
+  (s.photos || []).forEach((photo, index) => {
+    if (photo) list.push({ kind: 'photo', name: `photo-${index + 1}.jpg`, path: photo });
+  });
+  return list.filter((item) => filterExistingPaths([item.path]).length).map(({ kind, name }) => ({ kind, name }));
+}
+
+/**
  * ลิงก์ที่ใส่ใน QR บนจอ: หน้าชวนสนับสนุนบนมือถือลูกค้า ซึ่งมีปุ่มข้ามไปรับรูปได้ทันที
  *
  * ส่งไปแค่ token ของลิงก์แชร์เซสชันนั้น ใส่ไว้หลังเครื่องหมาย # ซึ่งเบราว์เซอร์ไม่ส่งขึ้นเซิร์ฟเวอร์
  * ตัวตู้และ tunnel จึงไม่เห็นว่าใครเปิดรูปของเซสชันไหน และหน้านั้นประกอบลิงก์ NAS เองจาก token
  * ไม่รับ URL เต็มทางลิงก์ เพราะจะกลายเป็นช่องให้คนเอาโดเมนของตู้ไปทำลิงก์หลอกพาไปเว็บอื่น
  */
-function customerLandingUrl(shareUrl) {
-  if (!config.publicUrl || !config.promptpayId || !shareUrl) return null;
-  const match = String(shareUrl).match(/\/s\/([A-Za-z0-9]{8,64})$/);
-  return match ? `${config.publicUrl}/r#${match[1]}` : null;
+function customerLandingUrl(session) {
+  if (!config.publicUrl || !session?.publicToken) return null;
+  const page = config.promptpayId ? 'r' : 'g';
+  return `${config.publicUrl}/${page}#${session.publicToken}`;
 }
 
 /** นับถอยหลังกลับหน้าแรกหลังโชว์ผลงาน */

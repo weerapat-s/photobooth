@@ -11,9 +11,11 @@ import { camera } from './camera.js';
 import { bus, snapshot, reset, startSession, captureSlot, deletePhoto, finishNow, discard, fakeShot, scanUnfinishedSessions, recoverSession, ingestIpadPhoto } from './session.js';
 import { runPreflightChecks } from './preflight.js';
 import { generateCalibrationSheet } from './calibration.js';
-import { runCleanup } from './retention.js';
+import { runCleanup, retentionConfig } from './retention.js';
 import { availableLayouts, customerChooses, defaultLayout, findLayout } from './layouts.js';
 import { promptPayPayload } from './promptpay.js';
+import { findByToken, resolveFile, fileList, renderPage } from './customer.js';
+import { writeZip, zipSize } from './zip.js';
 import QRCode from 'qrcode';
 
 // ลายเซ็นของไฟล์หน้าจอ ใช้ให้เครื่องลูกข่ายรู้ว่าโค้ดที่ตัวเองรันอยู่เก่ากว่าที่เซิร์ฟเวอร์เสิร์ฟแล้ว
@@ -456,25 +458,70 @@ app.get('/api/layout/:id/preview.jpg', async (req, res) => {
 // ชวนสนับสนุนผ่านพร้อมเพย์ มีปุ่มข้ามไปรับรูปได้ทันที
 // token ของลิงก์รูปอยู่หลัง # ในที่อยู่ ไม่ถูกส่งมาที่นี่ หน้านี้จึงไม่รู้และไม่ต้องรู้ว่าเป็นเซสชันไหน
 const LANDING_TEMPLATE = fs.readFileSync(path.join(ROOT, 'server', 'landing.html'), 'utf8');
+const GALLERY_TEMPLATE = fs.readFileSync(path.join(ROOT, 'server', 'gallery.html'), 'utf8');
 
-app.get('/r', (req, res) => {
-  const boothConfig = {
-    eventName: config.eventName,
-    ncBase: config.nc.base,
-    payEnabled: Boolean(config.promptpayId),
-    amounts: config.payAmounts,
-    max: config.payMaxAmount,
-    // เลขพร้อมเพย์ต้องโชว์ให้ลูกค้าคัดลอกไปโอนเองได้ (สแกน QR บนจอมือถือตัวเองไม่ได้)
-    promptpay: config.promptpayId ? String(config.promptpayId).replace(/\D/g, '') : '',
-  };
-  // กัน </script> ในค่าที่ฝังลงหน้า
-  const json = JSON.stringify(boothConfig).replace(/</g, '\\u003c');
+/** หน้ารับรูป — ไฟล์เสิร์ฟจากตู้เครื่องนี้ ไม่ต้องรอ NAS */
+app.get('/g', (req, res) => {
   res
     .type('html')
     .set('Cache-Control', 'no-store')
     .set('Referrer-Policy', 'no-referrer')
     .set('X-Robots-Tag', 'noindex')
-    .send(LANDING_TEMPLATE.replace('__BOOTH_CONFIG__', json));
+    .send(renderPage(GALLERY_TEMPLATE));
+});
+
+/** รายการไฟล์ของเซสชันนั้น — ต้องมีกุญแจถึงจะเห็น */
+app.get('/api/public/session/:token', (req, res) => {
+  const entry = findByToken(req.params.token);
+  if (!entry) return res.status(404).json({ ok: false, error: 'ไม่พบเซสชันนี้' });
+  res.set('Cache-Control', 'no-store').json({
+    ok: true,
+    takenAt: entry.journal.startedAt || null,
+    keepDays: retentionConfig.localRetentionDays || null,
+    files: fileList(entry),
+  });
+});
+
+/** ดาวน์โหลดทั้งหมดเป็นไฟล์เดียว */
+app.get('/api/public/session/:token/all.zip', async (req, res) => {
+  const entry = findByToken(req.params.token);
+  if (!entry) return res.status(404).json({ ok: false, error: 'ไม่พบเซสชันนี้' });
+  const entries = fileList(entry)
+    .map((file) => ({ name: file.name, path: resolveFile(entry, file.name) }))
+    .filter((file) => file.path);
+  if (!entries.length) return res.status(404).json({ ok: false, error: 'ยังไม่มีไฟล์' });
+  res
+    .type('zip')
+    .set('Cache-Control', 'no-store')
+    .set('Content-Length', String(zipSize(entries)))
+    .set('Content-Disposition', `attachment; filename="photobooth-${entry.id}.zip"`);
+  await writeZip(res, entries);
+});
+
+/** ไฟล์เดี่ยว — รับได้เฉพาะชื่อในรายการที่อนุญาต กัน path traversal */
+app.get('/api/public/session/:token/:name', (req, res) => {
+  const entry = findByToken(req.params.token);
+  if (!entry) return res.status(404).end();
+  const file = resolveFile(entry, req.params.name);
+  if (!file) return res.status(404).end();
+  res.set('Cache-Control', 'private, max-age=600');
+  res.download(file, req.params.name);
+});
+
+
+app.get('/r', (req, res) => {
+  res
+    .type('html')
+    .set('Cache-Control', 'no-store')
+    .set('Referrer-Policy', 'no-referrer')
+    .set('X-Robots-Tag', 'noindex')
+    .send(renderPage(LANDING_TEMPLATE, {
+      payEnabled: Boolean(config.promptpayId),
+      amounts: config.payAmounts,
+      max: config.payMaxAmount,
+      // เลขพร้อมเพย์ต้องโชว์ให้ลูกค้าคัดลอกไปโอนเองได้ (สแกน QR บนจอมือถือตัวเองไม่ได้)
+      promptpay: config.promptpayId ? String(config.promptpayId).replace(/\D/g, '') : '',
+    }));
 });
 
 // รูป QR พร้อมเพย์ใส่ยอดที่ลูกค้าเลือก — ส่งเป็นไฟล์ภาพจริง ลูกค้าจะกดค้างบันทึกลงอัลบั้มได้

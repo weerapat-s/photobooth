@@ -98,7 +98,7 @@ async function run() {
   }
   await sleep(800);
 
-  // QR บนจอต้องชี้หน้าชวนสนับสนุน โดยส่งแค่ token ของลิงก์แชร์เซสชันนั้นหลัง #
+  // QR บนจอต้องชี้หน้าชวนสนับสนุน โดยส่งกุญแจของเซสชันหลัง #
   const run3 = startServer({ PROMPTPAY_ID: '0801234567', PUBLIC_URL: 'https://booth.example.test/', SHOTS: '1', PRINT_SHOTS: '1' });
   try {
     await waitUp(run3.log);
@@ -107,9 +107,7 @@ async function run() {
     const finished = await api('/api/finish', { method: 'POST', body: '{}' });
     assert.strictEqual(finished.status, 200, `ปิดเซสชันไม่ได้: ${JSON.stringify(finished.body)}`);
     const { session } = (await api('/api/state')).body;
-    const token = session.shareUrl.match(/\/s\/([A-Za-z0-9]+)$/)?.[1];
-    assert(token, `ลิงก์แชร์ต้องเป็นแชร์แยกของเซสชัน: ${session.shareUrl}`);
-    assert.strictEqual(session.qrUrl, `https://booth.example.test/r#${token}`);
+    assert.match(session.qrUrl, /^https:\/\/booth\.example\.test\/r#[a-f0-9]{32}$/, `qrUrl ไม่ถูกต้อง: ${session.qrUrl}`);
     console.log('Booth QR points at the landing page.');
   } finally {
     run3.server.kill();

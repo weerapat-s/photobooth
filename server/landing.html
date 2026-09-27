@@ -176,10 +176,11 @@
   const BOOTH = __BOOTH_CONFIG__;
   const $ = (id) => document.getElementById(id);
 
-  // token ของลิงก์แชร์รูปอยู่หลัง # เท่านั้น เบราว์เซอร์ไม่ส่งส่วนนี้ขึ้นเซิร์ฟเวอร์
+  // กุญแจของเซสชันอยู่หลัง # เท่านั้น เบราว์เซอร์ไม่ส่งส่วนนี้ไปกับที่อยู่หน้าเว็บ
   const token = decodeURIComponent(location.hash.slice(1));
-  const valid = /^[A-Za-z0-9]{8,64}$/.test(token);
-  const photosUrl = valid ? `${BOOTH.ncBase}/s/${token}` : null;
+  const valid = /^[a-f0-9]{32}$/.test(token);
+  // หน้ารับรูปเสิร์ฟจากตู้เครื่องเดียวกัน ส่งกุญแจต่อไปหลัง # เหมือนเดิม
+  const photosUrl = valid ? `/g#${token}` : null;
 
   // ใช้ replace เพื่อไม่ให้ปุ่มย้อนกลับพาวนกลับมาหน้านี้
   const goPhotos = () => { if (photosUrl) location.replace(photosUrl); };

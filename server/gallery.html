@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<title>รับรูปของคุณ</title>
+<style>
+  :root {
+    --bg: #0E1226;
+    --panel: #161B34;
+    --line: #27304F;
+    --ink: #F3F5FD;
+    --muted: #97A0C0;
+    --accent: #FF5A1F;
+    --accent-ink: #FFFFFF;
+    --ok: #43C08A;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { background: var(--bg); }
+  body {
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Sarabun", "Leelawadee UI", "Noto Sans Thai", system-ui, sans-serif;
+    line-height: 1.55;
+    min-height: 100dvh;
+    display: flex;
+    justify-content: center;
+    padding: max(18px, env(safe-area-inset-top)) 14px max(28px, env(safe-area-inset-bottom));
+  }
+  main { width: 100%; max-width: 27rem; display: flex; flex-direction: column; gap: 14px; }
+  [hidden] { display: none !important; }
+
+  header { text-align: center; display: grid; gap: 4px; }
+  .event { font-size: .76rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); }
+  h1 { font-size: 1.5rem; line-height: 1.25; text-wrap: balance; }
+  .when { font-size: .85rem; color: var(--muted); }
+
+  .item {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .item > img, .item > video {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 12px;
+    background: #000;
+  }
+  .btn {
+    display: block;
+    width: 100%;
+    border: 0;
+    border-radius: 999px;
+    padding: 14px 18px;
+    font: inherit;
+    font-size: 1rem;
+    font-weight: 800;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    background: var(--accent);
+    color: var(--accent-ink);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .btn.ghost { background: transparent; color: var(--ink); border: 2px solid var(--line); }
+  .btn:active { transform: scale(.985); }
+
+  .hint { font-size: .85rem; color: var(--muted); text-align: center; }
+  .save-hint { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 12px 14px; font-size: .88rem; color: var(--muted); }
+  .save-hint b { color: var(--ink); }
+  .strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .strip img { width: 100%; height: auto; border-radius: 10px; display: block; background: #000; }
+  .section-label { font-size: .78rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); text-align: center; margin-top: 4px; }
+  .foot { text-align: center; font-size: .78rem; color: var(--muted); display: grid; gap: 4px; margin-top: 6px; }
+  .err { text-align: center; color: var(--accent); }
+  a:focus-visible, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<main>
+  <section id="loading"><p class="hint">กำลังโหลดรูปของคุณ...</p></section>
+
+  <section id="bad" hidden>
+    <div class="item">
+      <h1>เปิดลิงก์ไม่ได้</h1>
+      <p class="hint">ลองสแกน QR ที่หน้าจอตู้ถ่ายรูปอีกครั้ง</p>
+    </div>
+  </section>
+
+  <div id="content" hidden>
+    <header>
+      <p class="event" id="event"></p>
+      <h1>รูปของคุณพร้อมแล้ว</h1>
+      <p class="when" id="when"></p>
+    </header>
+
+    <div class="item" id="card-item" hidden>
+      <img id="card" alt="การ์ดรูปของคุณ">
+      <a class="btn" id="dl-card" download="card.jpg">บันทึกรูป</a>
+    </div>
+
+    <div class="item" id="video-item" hidden>
+      <video id="video" playsinline autoplay muted loop controls></video>
+      <a class="btn" id="dl-video" download="video.mp4">บันทึกวิดีโอ</a>
+    </div>
+
+    <p class="save-hint" id="ios-hint" hidden>
+      ถ้ากดบันทึกแล้วไฟล์ไม่ลงอัลบั้ม ให้ <b>กดค้างที่รูป</b> แล้วเลือก <b>บันทึกรูปภาพ</b>
+    </p>
+
+    <p class="section-label" id="shots-label" hidden>รูปทั้งหมด</p>
+    <div class="strip" id="shots"></div>
+
+    <a class="btn ghost" id="dl-all" download>ดาวน์โหลดทั้งหมด (.zip)</a>
+
+    <div class="foot">
+      <p id="expiry"></p>
+      <p>เก็บลิงก์นี้ไว้เปิดซ้ำได้ ตราบใดที่ตู้ยังเปิดอยู่</p>
+    </div>
+  </div>
+</main>
+
+<script>
+  const BOOTH = __BOOTH_CONFIG__;
+  const $ = (id) => document.getElementById(id);
+
+  // กุญแจของเซสชันอยู่หลัง # เบราว์เซอร์ไม่ส่งส่วนนี้ไปกับที่อยู่หน้าเว็บ
+  const token = decodeURIComponent(location.hash.slice(1));
+  const valid = /^[a-f0-9]{32}$/.test(token);
+  const fileUrl = (name) => `/api/public/session/${token}/${encodeURIComponent(name)}`;
+
+  const show = (id) => { for (const key of ['loading', 'bad', 'content']) $(key).hidden = key !== id; };
+
+  // iOS บันทึกวิดีโอจากปุ่มดาวน์โหลดตรง ๆ ไม่ได้ ต้องบอกวิธีกดค้าง
+  if (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) {
+    $('ios-hint').hidden = false;
+  }
+
+  async function load() {
+    if (!valid) return show('bad');
+    let data;
+    try {
+      const res = await fetch(`/api/public/session/${token}`, { cache: 'no-store' });
+      if (!res.ok) return show('bad');
+      data = await res.json();
+    } catch {
+      return show('bad');
+    }
+
+    $('event').textContent = BOOTH.eventName || '';
+    $('when').textContent = data.takenAt
+      ? new Date(data.takenAt).toLocaleString('th-TH', { dateStyle: 'long', timeStyle: 'short' })
+      : '';
+    $('expiry').textContent = data.keepDays
+      ? `ไฟล์จะถูกลบออกจากตู้ใน ${data.keepDays} วัน`
+      : '';
+
+    const names = new Set(data.files.map((file) => file.name));
+
+    if (names.has('card.jpg')) {
+      $('card').src = fileUrl('card.jpg');
+      $('dl-card').href = fileUrl('card.jpg');
+      $('card-item').hidden = false;
+    }
+    if (names.has('video.mp4')) {
+      $('video').src = fileUrl('video.mp4');
+      $('dl-video').href = fileUrl('video.mp4');
+      $('video-item').hidden = false;
+    }
+
+    const shots = data.files.filter((file) => file.kind === 'photo');
+    if (shots.length) {
+      $('shots-label').hidden = false;
+      for (const shot of shots) {
+        const link = document.createElement('a');
+        link.href = fileUrl(shot.name);
+        link.download = shot.name;
+        const img = document.createElement('img');
+        img.src = fileUrl(shot.name);
+        img.alt = shot.name;
+        img.loading = 'lazy';
+        link.append(img);
+        $('shots').append(link);
+      }
+    }
+
+    $('dl-all').href = `/api/public/session/${token}/all.zip`;
+    show('content');
+  }
+
+  load();
+</script>
+</body>
+</html>
