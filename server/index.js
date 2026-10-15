@@ -379,6 +379,7 @@ app.get('/api/config', (req, res) => {
     printThemeColor: config.printThemeColor,
     watchDir: config.watchDir,
     captureSource: config.captureSource,
+    bypassCamera: config.bypassCamera,
     kioskMode: config.kioskMode,
     countdown: config.countdown,
     shutterMode: config.shutterMode,

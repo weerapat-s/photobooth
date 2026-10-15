@@ -120,6 +120,12 @@
       <option value="ipad">ipad — แอป Native iPad คุม EOS R ผ่าน USB และส่งภาพเข้าเซิร์ฟเวอร์</option>
     </select>
 
+    <label>การตรวจกล้อง (โหมดทดสอบ / Bypass Camera)</label>
+    <select id="in-bypass-camera">
+      <option value="false">ตรวจกล้องตามปกติ (สำหรับต่อกล้องจริง)</option>
+      <option value="true">ข้ามการตรวจกล้องชั่วคราว (สำหรับทดสอบระบบ)</option>
+    </select>
+
     <label>นับถอยหลังก่อนแต่ละช็อต (วินาที) — โหมด digicam/web</label>
     <input id="in-countdown" type="number" min="0" max="10">
 
@@ -295,6 +301,7 @@ async function loadConfig() {
   const c = await api('/api/config');
   $('in-kiosk-mode').value = c.kioskMode || 'operator';
   $('in-source').value = c.captureSource;
+  $('in-bypass-camera').value = String(c.bypassCamera ?? false);
   $('in-countdown').value = c.countdown;
   $('in-shutter').value = c.shutterMode || 'software';
   $('in-web-facing').value = c.webCameraFacing || 'user';
@@ -430,6 +437,7 @@ $('btn-save').onclick = async () => {
       body: JSON.stringify({
         KIOSK_MODE: $('in-kiosk-mode').value,
         CAPTURE_SOURCE: $('in-source').value,
+        BYPASS_CAMERA: $('in-bypass-camera').value,
         COUNTDOWN: Number($('in-countdown').value),
         SHUTTER: $('in-shutter').value,
         WEB_CAMERA_FACING: $('in-web-facing').value,

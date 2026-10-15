@@ -74,6 +74,12 @@ export function validateConfigPatch(patch) {
         }
         break;
       }
+      case 'BYPASS_CAMERA': {
+        if (!['true', 'false'].includes(strVal.toLowerCase())) {
+          errors.push(`BYPASS_CAMERA ต้องเป็น true หรือ false (ได้รับ: ${val})`);
+        }
+        break;
+      }
       case 'KIOSK_MODE': {
         if (!['operator', 'self_service'].includes(strVal)) {
           errors.push(`KIOSK_MODE ต้องเป็น 'operator' หรือ 'self_service' (ได้รับ: ${val})`);

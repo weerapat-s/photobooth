@@ -402,6 +402,10 @@ export const camera = {
 
   /** ถ่าย 1 ช็อต คืน path ไฟล์ที่กล้องบันทึกลง dir */
   async capture(dir) {
+    if (config.bypassCamera || config.captureSource === 'mock') {
+      const { mockShot } = await import('./watcher.js');
+      return mockShot(dir);
+    }
     const before = await listFiles(dir);
     // digiCamControl แนะนำ LiveView_Capture ขณะหน้า Live View เปิดอยู่ (กล้องบางรุ่นไม่รับ capture ปกติในโหมดนี้)
     if (liveViewActive) await remote(['/c', 'do', 'LiveView_Capture']);
@@ -430,6 +434,14 @@ export const camera = {
   },
 
   async status() {
+    if (config.bypassCamera) {
+      return {
+        ok: true,
+        transport: 'mock',
+        liveView: false,
+        cameras: ['Test Mock Camera'],
+      };
+    }
     const transport = await resolveTransport();
     try {
       const out = transport === 'webserver' ? await slc('list', 'cameras') : await remote(['/c', 'list', 'cameras']);

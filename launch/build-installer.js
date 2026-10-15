@@ -45,8 +45,12 @@ function buildEnvTemplate() {
   const out = source.map((line) => {
     const match = line.match(/^([A-Z0-9_]+)=/);
     if (!match) return line;
-    seen.add(match[1]);
-    return PER_MACHINE_ENV.includes(match[1]) ? `${match[1]}=` : line;
+    const key = match[1];
+    seen.add(key);
+    if (PER_MACHINE_ENV.includes(key)) return `${key}=`;
+    if (key === 'CAPTURE_SOURCE') return 'CAPTURE_SOURCE=digicam';
+    if (key === 'BYPASS_CAMERA') return 'BYPASS_CAMERA=false';
+    return line;
   });
   const missing = REQUIRED_ENV.filter((name) => !seen.has(name));
   if (missing.length) throw new Error(`.env ของเครื่องนี้ยังไม่มีค่า: ${missing.join(', ')}`);
@@ -98,6 +102,14 @@ await fsp.writeFile(path.join(stage, 'env.template'), buildEnvTemplate(), 'utf8'
 await fsp.copyFile(path.join(deploy, 'setup.ps1'), path.join(stage, 'setup.ps1'));
 await fsp.copyFile(path.join(deploy, 'README-INSTALL.txt'), path.join(stage, 'README-INSTALL.txt'));
 
+const packagesDir = path.join(deploy, 'packages');
+if (fs.existsSync(packagesDir)) {
+  const stagePackages = path.join(stage, 'packages');
+  await fsp.mkdir(stagePackages, { recursive: true });
+  console.log('ใส่แพ็กเกจติดตั้งโปรแกรมเสริม (digiCamControl / cloudflared)...');
+  await fsp.cp(packagesDir, stagePackages, { recursive: true });
+}
+
 // ── รวมเป็น zip ──────────────────────────────────────────────────────────────
 console.log('บีบอัด...');
 const payload = path.join(tempRoot, 'payload.zip');
@@ -135,10 +147,37 @@ const hash = createHash('sha256').update(bytes).digest('hex');
 await fsp.writeFile(`${exePath}.sha256.txt`, `${hash}  ${exeName}\r\n`, 'utf8');
 await fsp.rm(tempRoot, { recursive: true, force: true });
 
+// ── สร้าง ZIP รวมทุกโปรแกรม (Complete Suite) ─────────────────────────────────
+const suiteZip = path.join(dist, 'PhotoBooth-Complete-Suite.zip');
+console.log('สร้างชุด ZIP รวมทุกโปรแกรม (Complete Suite)...');
+const suiteDir = path.join(os.tmpdir(), 'photobooth-suite-' + Date.now());
+await fsp.mkdir(suiteDir, { recursive: true });
+await fsp.copyFile(exePath, path.join(suiteDir, exeName));
+await fsp.copyFile(`${exePath}.sha256.txt`, path.join(suiteDir, `${exeName}.sha256.txt`));
+await fsp.copyFile(path.join(deploy, 'README-INSTALL.txt'), path.join(suiteDir, 'README-INSTALL.txt'));
+if (fs.existsSync(packagesDir)) {
+  const standalonePackages = path.join(suiteDir, 'standalone-installers');
+  await fsp.mkdir(standalonePackages, { recursive: true });
+  await fsp.cp(packagesDir, standalonePackages, { recursive: true });
+}
+await execFileAsync('powershell.exe', [
+  '-NoProfile', '-Command',
+  `Compress-Archive -Path '${q(suiteDir)}\\*' -DestinationPath '${q(suiteZip)}' -CompressionLevel Optimal -Force`,
+], { windowsHide: true, timeout: 600000 });
+await fsp.rm(suiteDir, { recursive: true, force: true });
+const suiteBytes = await fsp.readFile(suiteZip);
+const suiteHash = createHash('sha256').update(suiteBytes).digest('hex');
+await fsp.writeFile(`${suiteZip}.sha256.txt`, `${suiteHash}  PhotoBooth-Complete-Suite.zip\r\n`, 'utf8');
+
 console.log('');
 console.log(exePath);
 console.log(`ขนาด ${(bytes.length / 1024 / 1024).toFixed(1)} MB`);
 console.log(`SHA256 ${hash}`);
 console.log('');
+console.log(suiteZip);
+console.log(`ขนาด ${(suiteBytes.length / 1024 / 1024).toFixed(1)} MB`);
+console.log(`SHA256 ${suiteHash}`);
+console.log('');
 console.log('ระวัง: ในไฟล์นี้มี NC_APP_PASSWORD ของ Nextcloud อยู่ ใครได้ไฟล์ไปก็เขียนลง NAS ได้');
 console.log('       แจกเฉพาะเครื่องบูทของงาน และถ้าไฟล์หลุด ให้ถอน app password ตัวนั้นใน Nextcloud');
+

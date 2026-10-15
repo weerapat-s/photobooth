@@ -24,6 +24,7 @@ export const config = {
   // แหล่งภาพ: folder = เฝ้าโฟลเดอร์ Capture ของ Capture One | mock = สร้างภาพปลอมไว้เทสต์
   // digicam = แอปคุมกล้องผ่าน digiCamControl (มี live view) | folder = เฝ้าโฟลเดอร์ Capture One | mock = เทสต์
   captureSource: process.env.CAPTURE_SOURCE || 'digicam',
+  bypassCamera: bool(process.env.BYPASS_CAMERA, false),
   ipadApiToken: process.env.IPAD_API_TOKEN || '',
   webPairCode: process.env.WEB_PAIR_CODE || '',
   webCameraFacing: process.env.WEB_CAMERA_FACING || 'user',

@@ -17,7 +17,9 @@ export async function runPreflightChecks({ deep = false, skipExternal = false } 
   let cloudReady = false;
 
   // 1. Camera check
-  if (skipExternal) {
+  if (config.bypassCamera) {
+    checks.push({ name: 'Camera Connection', pass: true, detail: 'ข้ามการตรวจกล้อง (ระบบเทสต์/Bypassed)' });
+  } else if (skipExternal) {
     checks.push({ name: 'Camera Connection', pass: true, detail: 'ข้ามในการทดสอบอัตโนมัติ' });
   } else if (config.captureSource === 'digicam') {
     try {

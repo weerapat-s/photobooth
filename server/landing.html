@@ -5,170 +5,969 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
 <meta name="referrer" content="no-referrer">
-<title>รับรูปของคุณ</title>
+<title>รับรูปของคุณ — Photo Booth</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Prompt:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #F5F4FA;
-    --card: #FFFFFF;
-    --ink: #16161D;
-    --muted: #6B6B78;
-    --line: #E6E5EE;
-    --soft: #F1F0F7;
-    --accent: #E8385A;
-    --accent-ink: #FFFFFF;
-    --ok: #1C8A52;
+    --bg: #F8F9FD;
+    --card: rgba(255, 255, 255, 0.92);
+    --card-border: rgba(255, 255, 255, 0.8);
+    --card-shadow: 0 24px 48px -12px rgba(32, 28, 68, 0.08), 0 4px 16px rgba(32, 28, 68, 0.03);
+    --ink: #161724;
+    --ink-sub: #3A3B4D;
+    --muted: #6B6D82;
+    --line: #E8E8F2;
+    --soft: #F3F4FA;
+    --input-bg: #FFFFFF;
+    
+    --primary: #FF2E63;
+    --primary-end: #FF6E40;
+    --primary-gradient: linear-gradient(135deg, #FF2E63 0%, #FF6E40 100%);
+    --primary-glow: rgba(255, 46, 99, 0.28);
+    --primary-ink: #FFFFFF;
+    
+    --dark-cta: linear-gradient(135deg, #1B1E2E 0%, #2A2E44 100%);
+    --dark-cta-glow: rgba(27, 30, 46, 0.25);
+    
+    --ok: #10B981;
+    --ok-soft: rgba(16, 185, 129, 0.12);
+    
+    --radius-xl: 28px;
+    --radius-lg: 20px;
+    --radius-md: 14px;
+    --radius-pill: 9999px;
   }
+
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #0E0E13;
-      --card: #191920;
-      --ink: #F2F2F6;
-      --muted: #9C9CAA;
-      --line: #2A2A34;
-      --soft: #22222B;
-      --accent: #FF5C7A;
-      --accent-ink: #16161D;
-      --ok: #5FD69A;
+      --bg: #0B0B12;
+      --card: rgba(22, 22, 34, 0.88);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --card-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05);
+      --ink: #F7F8FC;
+      --ink-sub: #D1D3E0;
+      --muted: #8E90A6;
+      --line: #29293D;
+      --soft: #1A1A28;
+      --input-bg: #141420;
+      
+      --primary: #FF3D71;
+      --primary-end: #FF7D54;
+      --primary-gradient: linear-gradient(135deg, #FF3D71 0%, #FF7D54 100%);
+      --primary-glow: rgba(255, 61, 113, 0.35);
+      
+      --dark-cta: linear-gradient(135deg, #2D314A 0%, #3D4263 100%);
+      --dark-cta-glow: rgba(45, 49, 74, 0.4);
+      
+      --ok: #34D399;
+      --ok-soft: rgba(52, 211, 153, 0.16);
     }
   }
-  * { box-sizing: border-box; margin: 0; }
-  html, body { background: var(--bg); }
-  body {
-    color: var(--ink);
-    font-family: -apple-system, BlinkMacSystemFont, "Sarabun", "Leelawadee UI", "Noto Sans Thai", system-ui, sans-serif;
-    line-height: 1.55;
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  
+  html, body {
+    background-color: var(--bg);
     min-height: 100dvh;
+    font-family: 'Prompt', -apple-system, BlinkMacSystemFont, "Sarabun", sans-serif;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  /* Ambient Aurora Glow */
+  .aurora {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    overflow: hidden;
+  }
+  .aurora-orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.65;
+    animation: pulseOrb 10s ease-in-out infinite alternate;
+  }
+  .orb-1 {
+    width: 320px;
+    height: 320px;
+    top: -80px;
+    right: -60px;
+    background: radial-gradient(circle, rgba(255, 46, 99, 0.28) 0%, transparent 70%);
+  }
+  .orb-2 {
+    width: 380px;
+    height: 380px;
+    bottom: -100px;
+    left: -80px;
+    background: radial-gradient(circle, rgba(124, 58, 237, 0.22) 0%, transparent 70%);
+    animation-delay: -5s;
+  }
+  .orb-3 {
+    width: 260px;
+    height: 260px;
+    top: 35%;
+    left: 20%;
+    background: radial-gradient(circle, rgba(255, 160, 51, 0.15) 0%, transparent 70%);
+    animation-delay: -2s;
+  }
+  @keyframes pulseOrb {
+    0% { transform: scale(0.92) translate(0, 0); }
+    100% { transform: scale(1.12) translate(20px, 15px); }
+  }
+
+  body {
     display: flex;
     justify-content: center;
-    padding: max(20px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+    padding: max(24px, env(safe-area-inset-top)) 16px max(32px, env(safe-area-inset-bottom));
+    position: relative;
+    z-index: 1;
   }
-  main { width: 100%; max-width: 26rem; display: flex; flex-direction: column; gap: 16px; }
-  .event { font-size: .8rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); text-align: center; }
-  .card {
-    background: var(--card);
-    border: 1px solid var(--line);
-    border-radius: 22px;
-    padding: 22px 18px;
+
+  main {
+    width: 100%;
+    max-width: 26.5rem;
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 16px;
+    margin: auto 0;
   }
+
+  /* Floating Toast Alert */
+  .toast {
+    position: fixed;
+    top: max(20px, env(safe-area-inset-top));
+    left: 50%;
+    transform: translateX(-50%) translateY(-24px);
+    background: rgba(16, 185, 129, 0.96);
+    color: #FFFFFF;
+    font-size: 0.88rem;
+    font-weight: 700;
+    padding: 10px 20px;
+    border-radius: var(--radius-pill);
+    box-shadow: 0 12px 28px rgba(16, 185, 129, 0.35);
+    z-index: 9999;
+    backdrop-filter: blur(12px);
+    opacity: 0;
+    transition: all 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+    pointer-events: none;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* Header Event Badge */
+  .header-wrap {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 2px;
+  }
+  .event-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 16px;
+    border-radius: var(--radius-pill);
+    background: rgba(255, 46, 99, 0.08);
+    border: 1px solid rgba(255, 46, 99, 0.2);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  .event-sparkle {
+    font-size: 0.85rem;
+    line-height: 1;
+  }
+  .event {
+    font-size: 0.76rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--primary);
+  }
+
+  /* Card */
+  .card {
+    background: var(--card);
+    backdrop-filter: blur(28px);
+    -webkit-backdrop-filter: blur(28px);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-xl);
+    padding: 28px 22px 24px;
+    box-shadow: var(--card-shadow);
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    animation: cardAppear 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  @keyframes cardAppear {
+    from { opacity: 0; transform: translateY(16px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
   [hidden] { display: none !important; }
-  h1 { font-size: 1.6rem; line-height: 1.25; text-align: center; text-wrap: balance; }
-  .lede { color: var(--muted); text-align: center; font-size: .98rem; }
-  .amounts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-  button, .btn { font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+
+  /* Hero Icon & Titles */
+  .hero-icon-wrap {
+    display: flex;
+    justify-content: center;
+    margin-bottom: -6px;
+  }
+  .hero-icon {
+    width: 60px;
+    height: 60px;
+    border-radius: 20px;
+    background: var(--primary-gradient);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.85rem;
+    box-shadow: 0 12px 24px -6px var(--primary-glow);
+    animation: gentleFloat 4s ease-in-out infinite alternate;
+  }
+  @keyframes gentleFloat {
+    0% { transform: translateY(0) rotate(-2deg); }
+    100% { transform: translateY(-6px) rotate(2deg); }
+  }
+
+  .title-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    text-align: center;
+  }
+  h1 {
+    font-size: 1.68rem;
+    font-weight: 800;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    text-wrap: balance;
+  }
+  .lede {
+    color: var(--muted);
+    font-size: 0.95rem;
+    font-weight: 400;
+    line-height: 1.55;
+    padding: 0 4px;
+    text-wrap: balance;
+  }
+
+  /* Preset Amounts Grid */
+  .amounts {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-top: 2px;
+  }
+
+  button, .btn {
+    font-family: inherit;
+    cursor: pointer;
+    border: none;
+    outline: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
   .amount {
-    border: 2px solid var(--line);
+    position: relative;
+    border: 1.5px solid var(--line);
     background: var(--soft);
     color: var(--ink);
-    border-radius: 16px;
-    padding: 14px 4px 10px;
-    font-size: 1.5rem;
-    font-weight: 800;
-    font-variant-numeric: tabular-nums;
+    border-radius: var(--radius-lg);
+    padding: 16px 6px 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    overflow: visible;
   }
-  .amount small { display: block; font-size: .78rem; font-weight: 600; color: var(--muted); }
-  .amount:active { transform: scale(.97); }
-  form { display: flex; gap: 8px; align-items: center; }
-  input {
+  .amount-icon {
+    font-size: 1.35rem;
+    margin-bottom: 2px;
+    transition: transform 0.2s ease;
+  }
+  .amount-val {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 1.6rem;
+    font-weight: 800;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+    letter-spacing: -0.02em;
+  }
+  .amount-unit {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--muted);
+  }
+
+  .amount:hover {
+    transform: translateY(-3px);
+    border-color: var(--primary);
+    background: rgba(255, 46, 99, 0.04);
+    box-shadow: 0 10px 22px -6px var(--primary-glow);
+  }
+  .amount:hover .amount-icon {
+    transform: scale(1.15);
+  }
+  .amount:active {
+    transform: scale(0.96);
+  }
+
+  /* Highlight badge for popular amount */
+  .amount.popular {
+    border-color: rgba(255, 46, 99, 0.45);
+    background: linear-gradient(180deg, rgba(255, 46, 99, 0.07) 0%, var(--soft) 100%);
+  }
+  .popular-tag {
+    position: absolute;
+    top: -11px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--primary-gradient);
+    color: #fff;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+    white-space: nowrap;
+    box-shadow: 0 4px 10px var(--primary-glow);
+  }
+
+  /* Custom Amount Form */
+  form {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  .input-wrap {
     flex: 1;
     min-width: 0;
-    font: inherit;
-    font-size: 1.1rem;
-    font-variant-numeric: tabular-nums;
-    padding: 12px 14px;
-    border-radius: 14px;
-    border: 2px solid var(--line);
-    background: var(--card);
-    color: var(--ink);
+    display: flex;
+    align-items: center;
+    background: var(--input-bg);
+    border: 1.5px solid var(--line);
+    border-radius: var(--radius-md);
+    padding: 0 14px;
+    transition: all 0.2s ease;
   }
-  input:focus { outline: none; border-color: var(--accent); }
-  .unit { color: var(--muted); font-weight: 600; }
-  .ghost {
-    border: 2px solid var(--ink);
-    background: transparent;
-    color: var(--ink);
-    border-radius: 14px;
-    padding: 11px 16px;
+  .input-wrap:focus-within {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px var(--primary-glow);
+  }
+  .currency-prefix {
+    font-family: 'Plus Jakarta Sans', sans-serif;
     font-weight: 700;
+    color: var(--muted);
+    font-size: 1.05rem;
+    margin-right: 6px;
   }
-  .primary, .skip {
+  input {
+    width: 100%;
+    border: none;
+    background: transparent;
+    font-family: 'Plus Jakarta Sans', 'Prompt', sans-serif;
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--ink);
+    padding: 13px 0;
+    outline: none;
+    font-variant-numeric: tabular-nums;
+  }
+  input::placeholder {
+    color: var(--muted);
+    font-weight: 400;
+    font-size: 0.95rem;
+    font-family: 'Prompt', sans-serif;
+  }
+  .unit {
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 0.88rem;
+    margin-left: 6px;
+    white-space: nowrap;
+  }
+  .btn-submit {
+    border: none;
+    background: var(--soft);
+    color: var(--ink);
+    border: 1.5px solid var(--line);
+    border-radius: var(--radius-md);
+    padding: 12px 18px;
+    font-weight: 700;
+    font-size: 0.95rem;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+  }
+  .btn-submit:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+    transform: translateY(-1px);
+  }
+  .btn-submit:active {
+    transform: scale(0.96);
+  }
+
+  .err {
+    color: var(--primary);
+    text-align: center;
+    font-size: 0.88rem;
+    font-weight: 500;
+    min-height: 1.2em;
+    margin-top: -6px;
+  }
+
+  /* Main Action Buttons */
+  .skip, .primary {
     width: 100%;
     border: 0;
-    border-radius: 999px;
-    padding: 16px 20px;
-    font-size: 1.1rem;
-    font-weight: 800;
+    border-radius: var(--radius-pill);
+    padding: 16px 24px;
+    font-size: 1.06rem;
+    font-weight: 700;
     text-align: center;
     text-decoration: none;
-    display: block;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    position: relative;
+    overflow: hidden;
   }
-  .primary { background: var(--accent); color: var(--accent-ink); }
-  /* ปุ่มข้ามเด่นพอ ๆ กับปุ่มจ่าย — การสนับสนุนเป็นเรื่องสมัครใจจริง ๆ ไม่ซ่อนทางออก */
-  .skip { background: var(--ink); color: var(--bg); }
-  .linkish { background: none; border: 0; color: var(--muted); font-weight: 600; padding: 8px; text-decoration: underline; text-underline-offset: 3px; }
-  .row { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; }
-  .err { color: var(--accent); text-align: center; font-size: .92rem; min-height: 1.2em; }
-  .qr-wrap { background: #fff; border-radius: 16px; padding: 12px; align-self: center; width: min(100%, 17rem); }
-  .qr-wrap img { display: block; width: 100%; height: auto; aspect-ratio: 1; }
-  .howto { background: var(--soft); border-radius: 14px; padding: 12px 14px; font-size: .92rem; color: var(--ink); }
-  .howto ol { padding-left: 1.15rem; display: grid; gap: 4px; }
-  .or { text-align: center; color: var(--muted); font-size: .9rem; }
-  .pp { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
-  .pp strong { font-size: 1.25rem; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
-  .copied { color: var(--ok); font-weight: 700; }
-  .note { font-size: .8rem; color: var(--muted); text-align: center; }
-  button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .skip {
+    background: var(--dark-cta);
+    color: #FFFFFF;
+    box-shadow: 0 10px 24px -6px var(--dark-cta-glow);
+  }
+  .skip:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 16px 30px -8px var(--dark-cta-glow);
+  }
+  .skip:active {
+    transform: scale(0.98);
+  }
+
+  .primary {
+    background: var(--primary-gradient);
+    color: #FFFFFF;
+    box-shadow: 0 12px 28px -6px var(--primary-glow);
+  }
+  .primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 18px 34px -8px var(--primary-glow);
+  }
+  .primary:active {
+    transform: scale(0.98);
+  }
+
+  .btn-secondary {
+    width: 100%;
+    border: 1.5px solid var(--line);
+    border-radius: var(--radius-pill);
+    padding: 15px 24px;
+    font-size: 1.02rem;
+    font-weight: 700;
+    text-align: center;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: var(--card);
+    color: var(--ink);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.04);
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .btn-secondary:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.08);
+  }
+  .btn-secondary:active {
+    transform: scale(0.98);
+  }
+
+  .btn-icon-right {
+    font-size: 1.15rem;
+    transition: transform 0.2s ease;
+  }
+  .skip:hover .btn-icon-right, .primary:hover .btn-icon-right, .btn-secondary:hover .btn-icon-right {
+    transform: translateX(3px);
+  }
+
+  /* Payment Screen (#step-pay) */
+  .pay-header {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  .pay-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 12px;
+    border-radius: var(--radius-pill);
+    background: var(--ok-soft);
+    color: var(--ok);
+    font-size: 0.8rem;
+    font-weight: 700;
+  }
+  .pay-amount-display {
+    font-size: 1.85rem;
+    font-weight: 800;
+    color: var(--ink);
+    letter-spacing: -0.02em;
+  }
+  .pay-amount-display span {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    color: var(--primary);
+  }
+
+  /* BANK APP DIRECT LAUNCH SECTION */
+  .bank-section {
+    background: var(--soft);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    padding: 16px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .bank-section-header {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    text-align: center;
+  }
+  .bank-section-title {
+    font-size: 0.94rem;
+    font-weight: 700;
+    color: var(--ink);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .bank-section-subtitle {
+    font-size: 0.78rem;
+    color: var(--muted);
+  }
+
+  .bank-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .bank-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 10px 4px;
+    background: var(--card);
+    border: 1.5px solid var(--line);
+    border-radius: 14px;
+    color: var(--ink);
+    text-decoration: none;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .bank-btn:hover {
+    transform: translateY(-2px);
+    border-color: var(--primary);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.06);
+  }
+  .bank-btn:active {
+    transform: scale(0.95);
+  }
+  .bank-btn.active {
+    border-color: var(--primary);
+    background: var(--card);
+    box-shadow: 0 0 0 2px var(--primary-glow), 0 6px 16px rgba(255, 61, 113, 0.15);
+  }
+  .bank-badge {
+    width: 38px;
+    height: 38px;
+    border-radius: 11px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 800;
+    font-size: 0.82rem;
+    color: #FFFFFF;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.12);
+  }
+  .bank-name {
+    font-size: 0.73rem;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+
+  /* Specific Bank Brand Colors */
+  .badge-kplus { background: #138f2d; }
+  .badge-scb { background: #4e2a84; }
+  .badge-ktb { background: #00a5e5; }
+  .badge-ttb { background: #002d63; }
+  .badge-bbl { background: #1e3a8a; }
+  .badge-kma { background: #fdb813; color: #231f20; }
+
+  /* PromptPay Copy Card */
+  .pp-card {
+    background: var(--soft);
+    border: 1.5px dashed var(--line);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .pp-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .pp-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .pp-num {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 1.15rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .btn-copy {
+    border: 1px solid var(--line);
+    background: var(--card);
+    color: var(--ink);
+    border-radius: var(--radius-pill);
+    padding: 8px 14px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+  }
+  .btn-copy:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+  }
+  .btn-copy.copied {
+    background: var(--ok);
+    color: #FFFFFF;
+    border-color: var(--ok);
+  }
+
+  /* QR Frame Dropdown/Collapsible toggle */
+  .qr-toggle-btn {
+    background: none;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-pill);
+    padding: 10px 16px;
+    font-size: 0.84rem;
+    font-weight: 600;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    transition: all 0.2s ease;
+  }
+  .qr-toggle-btn:hover {
+    color: var(--ink);
+    background: var(--soft);
+  }
+
+  .qr-outer-frame {
+    background: #FFFFFF;
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    padding: 16px;
+    align-self: center;
+    width: min(100%, 16.5rem);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 12px 30px -8px rgba(0, 0, 0, 0.09);
+  }
+  .qr-pp-logo {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: #003764;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    text-transform: uppercase;
+  }
+  .qr-wrap {
+    width: 100%;
+    background: #FFFFFF;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .qr-wrap img {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1;
+  }
+  .qr-caption {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #6B7280;
+    text-align: center;
+  }
+
+  .sub-actions {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 16px;
+    margin-top: -4px;
+  }
+  .linkish {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 0.88rem;
+    font-weight: 600;
+    padding: 6px 10px;
+    border-radius: var(--radius-pill);
+    text-decoration: underline;
+    text-underline-offset: 4px;
+    transition: color 0.2s ease;
+  }
+  .linkish:hover {
+    color: var(--ink);
+  }
+
+  /* Footer Note */
+  .footer-note {
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 0.78rem;
+    color: var(--muted);
+    line-height: 1.45;
+    padding: 0 12px;
+  }
+  .footer-icon {
+    font-size: 0.9rem;
+    opacity: 0.8;
+  }
+
+  /* Accessibility Focus */
+  button:focus-visible, a:focus-visible, input:focus-visible {
+    outline: 3px solid var(--primary);
+    outline-offset: 2px;
+  }
 </style>
 </head>
 <body>
+
+<!-- Ambient Lights -->
+<div class="aurora" aria-hidden="true">
+  <div class="aurora-orb orb-1"></div>
+  <div class="aurora-orb orb-2"></div>
+  <div class="aurora-orb orb-3"></div>
+</div>
+
+<!-- Toast Feedback -->
+<div id="toast" class="toast">
+  <span>✓</span>
+  <span id="toast-text">คัดลอกเบอร์พร้อมเพย์แล้ว</span>
+</div>
+
 <main>
-  <p class="event" id="event"></p>
+  <!-- Event Badge Header -->
+  <div class="header-wrap">
+    <div class="event-pill">
+      <span class="event-sparkle">✨</span>
+      <span class="event" id="event">PHOTO BOOTH</span>
+    </div>
+  </div>
 
-  <!-- ถามก่อนว่าอยากสนับสนุนไหม -->
+  <!-- STEP 1: Ask for optional tip / donation -->
   <section class="card" id="step-ask" hidden>
-    <h1>รูปของคุณพร้อมแล้ว</h1>
-    <p class="lede">ถ้าชอบ ช่วยสนับสนุนทีมงานได้ตามใจ<br>ไม่สนับสนุนก็รับรูปได้เหมือนกันทุกอย่าง</p>
+    <div class="hero-icon-wrap">
+      <div class="hero-icon">📸</div>
+    </div>
+
+    <div class="title-group">
+      <h1>รูปของคุณพร้อมแล้ว! 🎉</h1>
+      <p class="lede">ดาวน์โหลดรูปและวิดีโอได้ฟรี หรือร่วมส่งกำลังใจสนับสนุนทีมงานได้ตามสะดวกใจนะคะ 💖</p>
+    </div>
+
+    <!-- Predefined amounts grid -->
     <div class="amounts" id="amounts"></div>
+
+    <!-- Custom amount form -->
     <form id="custom" novalidate>
-      <input id="amount" type="number" inputmode="numeric" min="1" step="1" placeholder="ใส่จำนวนเอง" aria-label="จำนวนเงิน (บาท)">
-      <span class="unit">บาท</span>
-      <button class="ghost" type="submit">ตกลง</button>
+      <div class="input-wrap">
+        <span class="currency-prefix">฿</span>
+        <input id="amount" type="number" inputmode="numeric" min="1" step="1" placeholder="ใส่จำนวนเงินตามใจชอบ" aria-label="จำนวนเงิน (บาท)">
+        <span class="unit">บาท</span>
+      </div>
+      <button class="btn-submit" type="submit">ตกลง</button>
     </form>
+    
     <p class="err" id="err"></p>
-    <a class="skip" id="skip" href="#">ข้าม ไปรับรูปเลย</a>
+
+    <!-- Main action button to get photos directly -->
+    <a class="skip" id="skip" href="#">
+      <span>ข้าม ไปรับรูปเลย</span>
+      <span class="btn-icon-right">➔</span>
+    </a>
   </section>
 
-  <!-- QR พร้อมเพย์ของยอดที่เลือก -->
+  <!-- STEP 2: PromptPay payment with banking app shortcuts -->
   <section class="card" id="step-pay" hidden>
-    <h1>สนับสนุน <span id="pay-amount"></span> บาท</h1>
-    <div class="qr-wrap"><img id="pay-qr" alt="QR พร้อมเพย์"></div>
-    <div class="howto">
-      <ol>
-        <li>กดค้างที่รูป QR แล้วเลือก <b>บันทึกรูปภาพ</b></li>
-        <li>เปิดแอปธนาคาร กดสแกน แล้วเลือก <b>รูปจากอัลบั้ม</b></li>
-      </ol>
+    <div class="pay-header">
+      <div class="pay-badge">💖 ขอบคุณสำหรับกำลังใจ</div>
+      <div class="pay-amount-display">สนับสนุน <span id="pay-amount"></span> บาท</div>
     </div>
-    <p class="or">หรือโอนเข้าพร้อมเพย์</p>
-    <div class="pp">
-      <strong id="pp-number"></strong>
-      <button class="ghost" id="copy" type="button">คัดลอกเบอร์</button>
+
+    <!-- Direct Bank App Launchers -->
+    <div class="bank-section">
+      <div class="bank-section-header">
+        <div class="bank-section-title">
+          <span>📲 แตะเพื่อเปิดแอปธนาคาร</span>
+        </div>
+        <p class="bank-section-subtitle">ระบบคัดลอกเบอร์พร้อมเพย์ให้แล้ว แตะเปิดแอปไปวางเลขโอนได้เลยค่ะ</p>
+      </div>
+
+      <div class="bank-grid" id="bank-grid">
+        <button type="button" class="bank-btn active" data-scheme="kplus://" data-name="K PLUS" onclick="selectBank('kplus://', 'K PLUS', this)">
+          <div class="bank-badge badge-kplus">K+</div>
+          <span class="bank-name">K PLUS</span>
+        </button>
+
+        <button type="button" class="bank-btn" data-scheme="scbeasy://" data-name="SCB EASY" onclick="selectBank('scbeasy://', 'SCB EASY', this)">
+          <div class="bank-badge badge-scb">SCB</div>
+          <span class="bank-name">SCB EASY</span>
+        </button>
+
+        <button type="button" class="bank-btn" data-scheme="ktbnext://" data-name="Krungthai NEXT" onclick="selectBank('ktbnext://', 'Krungthai NEXT', this)">
+          <div class="bank-badge badge-ktb">NEXT</div>
+          <span class="bank-name">Krungthai</span>
+        </button>
+
+        <button type="button" class="bank-btn" data-scheme="ttbtouch://" data-name="ttb touch" onclick="selectBank('ttbtouch://', 'ttb touch', this)">
+          <div class="bank-badge badge-ttb">ttb</div>
+          <span class="bank-name">ttb touch</span>
+        </button>
+
+        <button type="button" class="bank-btn" data-scheme="bualuangmbanking://" data-name="Bualuang m" onclick="selectBank('bualuangmbanking://', 'Bualuang m', this)">
+          <div class="bank-badge badge-bbl">BBL</div>
+          <span class="bank-name">Bualuang</span>
+        </button>
+
+        <button type="button" class="bank-btn" data-scheme="kma://" data-name="Krungsri KMA" onclick="selectBank('kma://', 'Krungsri KMA', this)">
+          <div class="bank-badge badge-kma">KMA</div>
+          <span class="bank-name">Krungsri</span>
+        </button>
+      </div>
     </div>
-    <a class="primary" id="paid" href="#">โอนแล้ว ไปรับรูป</a>
-    <div class="row">
-      <button class="linkish" id="change" type="button">เปลี่ยนจำนวน</button>
-      <button class="linkish" id="skip-2" type="button">ข้าม ไปรับรูป</button>
+
+    <!-- Account Number Copy Card -->
+    <div class="pp-card">
+      <div class="pp-info">
+        <span class="pp-label">เบอร์พร้อมเพย์</span>
+        <strong class="pp-num" id="pp-number"></strong>
+      </div>
+      <button class="btn-copy" id="copy" type="button">
+        <span>📋</span>
+        <span>คัดลอกเบอร์</span>
+      </button>
+    </div>
+
+    <!-- Toggle QR Code -->
+    <button type="button" class="qr-toggle-btn" id="btn-toggle-qr">
+      <span>🖼️</span>
+      <span id="qr-toggle-label">หรือแสดงรูป QR Code พร้อมเพย์</span>
+    </button>
+
+    <!-- Clean PromptPay QR Container (Collapsible) -->
+    <div class="qr-outer-frame" id="qr-frame" hidden>
+      <div class="qr-pp-logo">
+        <span>🏦</span>
+        <span>PromptPay · พร้อมเพย์</span>
+      </div>
+      <div class="qr-wrap">
+        <img id="pay-qr" alt="QR พร้อมเพย์">
+      </div>
+      <div class="qr-caption">กดค้างบันทึกรูป หรือแคปหน้าจอเพื่อสแกน</div>
+    </div>
+
+    <!-- Open Bank Primary Button -->
+    <button class="primary" id="btn-open-bank" type="button">
+      <span id="open-bank-label">เปิดธนาคาร</span>
+      <span class="btn-icon-right">🏦</span>
+    </button>
+
+    <!-- Proceed to Photos Secondary Button -->
+    <a class="btn-secondary" id="paid" href="#">
+      <span>ไปรับรูปเลย</span>
+      <span class="btn-icon-right">📸</span>
+    </a>
+
+    <!-- Sub links -->
+    <div class="sub-actions">
+      <button class="linkish" id="change" type="button">← เปลี่ยนจำนวน</button>
+      <button class="linkish" id="skip-2" type="button" style="display:none;">ข้าม ไปรับรูป</button>
     </div>
   </section>
 
-  <!-- ลิงก์เสีย: token หายหรือรูปแบบผิด -->
+  <!-- STEP 3: Invalid token error -->
   <section class="card" id="step-bad" hidden>
-    <h1>เปิดลิงก์ไม่ได้</h1>
-    <p class="lede">ลองสแกน QR ที่หน้าจอตู้ถ่ายรูปอีกครั้ง</p>
+    <div class="hero-icon-wrap">
+      <div class="hero-icon" style="background: linear-gradient(135deg, #6B7280 0%, #4B5563 100%);">🔍</div>
+    </div>
+    <div class="title-group">
+      <h1>เปิดลิงก์ไม่ได้</h1>
+      <p class="lede">ไม่พบข้อมูลเซสชัน กรุณาลองสแกน QR Code ที่หน้าจอตู้ถ่ายรูปใหม่อีกครั้งนะคะ</p>
+    </div>
   </section>
 
-  <p class="note">ระบบไม่เห็นข้อมูลการโอนของคุณ การสนับสนุนเป็นไปตามความสมัครใจ</p>
+  <!-- Reassuring Note Footer -->
+  <p class="footer-note">
+    <span class="footer-icon">🔒</span>
+    <span class="note">ระบบไม่เห็นข้อมูลการโอนของคุณ การสนับสนุนเป็นไปตามความสมัครใจ 100%</span>
+  </p>
 </main>
 
 <script>
@@ -185,17 +984,68 @@
   // ใช้ replace เพื่อไม่ให้ปุ่มย้อนกลับพาวนกลับมาหน้านี้
   const goPhotos = () => { if (photosUrl) location.replace(photosUrl); };
 
-  $('event').textContent = BOOTH.eventName || '';
+  if (BOOTH.eventName) $('event').textContent = BOOTH.eventName;
+
+  let toastTimer = null;
+  function showToast(text) {
+    clearTimeout(toastTimer);
+    $('toast-text').textContent = text;
+    $('toast').classList.add('show');
+    toastTimer = setTimeout(() => {
+      $('toast').classList.remove('show');
+    }, 2800);
+  }
+
+  async function copyPromptPay(silent = false) {
+    try {
+      if (BOOTH.promptpay) {
+        await navigator.clipboard.writeText(String(BOOTH.promptpay));
+        if (!silent) showToast('✓ คัดลอกเบอร์พร้อมเพย์แล้ว');
+        $('copy').innerHTML = '<span>✓</span><span>คัดลอกแล้ว</span>';
+        $('copy').classList.add('copied');
+        setTimeout(() => {
+          $('copy').innerHTML = '<span>📋</span><span>คัดลอกเบอร์</span>';
+          $('copy').classList.remove('copied');
+        }, 3000);
+      }
+    } catch {
+      if (!silent) $('copy').innerHTML = '<span>⚠️</span><span>กดค้างที่เบอร์</span>';
+    }
+  }
+
+  function openBankApp(scheme, name) {
+    copyPromptPay(true);
+    showToast(`คัดลอกเบอร์แล้ว กำลังเปิด ${name}...`);
+    setTimeout(() => {
+      window.location.href = scheme;
+    }, 150);
+  }
+
+  let selectedBank = { scheme: 'kplus://', name: 'K PLUS' };
+
+  function selectBank(scheme, name, btnEl) {
+    selectedBank = { scheme, name };
+    document.querySelectorAll('.bank-btn').forEach(b => b.classList.remove('active'));
+    if (btnEl) btnEl.classList.add('active');
+    $('open-bank-label').textContent = `เปิด ${name}`;
+    openBankApp(scheme, name);
+  }
 
   function show(step) {
     for (const id of ['step-ask', 'step-pay', 'step-bad']) $(id).hidden = id !== step;
-    window.scrollTo(0, 0);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function pickAmount(amount) {
     $('err').textContent = '';
     $('pay-amount').textContent = amount.toLocaleString('th-TH');
     $('pay-qr').src = `/api/public/pay-qr?amount=${amount}`;
+    copyPromptPay(false); // Auto copy promptpay number and show toast!
+    selectedBank = { scheme: 'kplus://', name: 'K PLUS' };
+    $('open-bank-label').textContent = 'เปิดธนาคาร';
+    document.querySelectorAll('.bank-btn').forEach(b => b.classList.remove('active'));
+    const defaultBtn = document.querySelector('.bank-btn[data-scheme="kplus://"]');
+    if (defaultBtn) defaultBtn.classList.add('active');
     show('step-pay');
   }
 
@@ -204,17 +1054,42 @@
   } else if (!BOOTH.payEnabled) {
     goPhotos();
   } else {
-    for (const amount of BOOTH.amounts) {
+    const icons = { 20: '☕', 50: '🧋', 100: '🍕' };
+    const subtitles = { 20: 'กาแฟ', 50: 'ชานม', 100: 'พิซซ่า' };
+    const amountsList = BOOTH.amounts || [20, 50, 100];
+    
+    // หายอดกลางเพื่อใส่ป้ายยอดนิยม (ถ้ามี 3 ค่า เอาตัวที่ 2)
+    const popularAmount = amountsList.length >= 3 ? amountsList[1] : null;
+
+    for (const amount of amountsList) {
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = 'amount';
-      button.textContent = amount.toLocaleString('th-TH');
+      button.className = 'amount' + (amount === popularAmount ? ' popular' : '');
+      
+      if (amount === popularAmount) {
+        const badge = document.createElement('span');
+        badge.className = 'popular-tag';
+        badge.textContent = 'ยอดนิยม ⭐';
+        button.appendChild(badge);
+      }
+
+      const icon = document.createElement('span');
+      icon.className = 'amount-icon';
+      icon.textContent = icons[amount] || '💖';
+
+      const val = document.createElement('span');
+      val.className = 'amount-val';
+      val.textContent = amount.toLocaleString('th-TH');
+
       const unit = document.createElement('small');
-      unit.textContent = 'บาท';
-      button.append(unit);
+      unit.className = 'amount-unit';
+      unit.textContent = subtitles[amount] ? `${subtitles[amount]} · บาท` : 'บาท';
+
+      button.append(icon, val, unit);
       button.onclick = () => pickAmount(amount);
       $('amounts').append(button);
     }
+
     const digits = String(BOOTH.promptpay || '');
     $('pp-number').textContent = digits.length === 10
       ? `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`
@@ -226,11 +1101,15 @@
     event.preventDefault();
     const amount = Number($('amount').value);
     if (!Number.isInteger(amount) || amount < 1 || amount > BOOTH.max) {
-      $('err').textContent = `ใส่จำนวนเต็ม 1 ถึง ${BOOTH.max.toLocaleString('th-TH')} บาท`;
+      $('err').textContent = `กรุณาใส่จำนวนเต็ม 1 ถึง ${BOOTH.max.toLocaleString('th-TH')} บาท`;
       return;
     }
     $('amount').blur();
     pickAmount(amount);
+  };
+
+  $('btn-open-bank').onclick = () => {
+    openBankApp(selectedBank.scheme, selectedBank.name);
   };
 
   for (const id of ['skip', 'paid']) {
@@ -239,13 +1118,18 @@
   $('skip-2').onclick = goPhotos;
   $('change').onclick = () => show('step-ask');
 
-  $('copy').onclick = async () => {
-    try {
-      await navigator.clipboard.writeText(String(BOOTH.promptpay));
-      $('copy').textContent = 'คัดลอกแล้ว';
-      $('copy').classList.add('copied');
-    } catch {
-      $('copy').textContent = 'กดค้างที่เบอร์เพื่อคัดลอก';
+  $('copy').onclick = () => copyPromptPay(false);
+
+  // Toggle QR visibility
+  let qrVisible = false;
+  $('btn-toggle-qr').onclick = () => {
+    qrVisible = !qrVisible;
+    $('qr-frame').hidden = !qrVisible;
+    $('qr-toggle-label').textContent = qrVisible ? 'ซ่อนรูป QR Code' : 'หรือแสดงรูป QR Code พร้อมเพย์';
+    if (qrVisible) {
+      setTimeout(() => {
+        $('qr-frame').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
     }
   };
 </script>

@@ -9,6 +9,8 @@ customers scan already points at their own private folder.
 WHAT IS IN THE INSTALLER
   - the booth application and every dependency it needs
   - its own copy of Node.js, so nothing has to be installed first
+  - digiCamControl 2.1.7 installer bundled (for camera tethering & ffmpeg)
+  - cloudflared (for optional iPad remote access)
   - the KMITL EXPO card template
   - the Nextcloud settings, including the app password for this NAS account
 
@@ -19,10 +21,9 @@ app password in Nextcloud (Settings > Security) and rebuild the installer.
 REQUIREMENTS
   1. Windows 10/11 64-bit
   2. A DSLR/mirrorless camera supported by digiCamControl, on a USB data cable
-  3. Internet access during installation, and while the booth runs (the photos
-     go to the NAS)
+  3. Internet access while the booth runs (the photos go to the NAS)
   Administrator rights are NOT needed for the booth itself. Windows will ask
-  for them once if digiCamControl still has to be installed.
+  for them once when digiCamControl installs to Program Files.
 
 WHAT THE INSTALLER DOES
   1. Closes any running copy of the booth.
@@ -30,8 +31,9 @@ WHAT THE INSTALLER DOES
      photo sessions, and the logs when it is an update.
   3. Writes a fresh .env: NAS settings baked in, a new random iPad token, and
      BOOTH_NAME set from the computer name so sessions are traceable.
-  4. Downloads and installs digiCamControl 2.1.7 if it is missing. This also
-     supplies the ffmpeg that builds the video, so let it finish.
+  4. Installs digiCamControl 2.1.7 from the bundled installer (or downloads if missing).
+     This also supplies the ffmpeg that builds the video, so let it finish.
+
   5. Creates the "Photo Booth" and "จอช่าง" shortcuts, starts the backend at
      login, and adds a watchdog task that restarts it if it dies.
   6. Uploads a probe folder to the NAS, creates and deletes a share on it, and

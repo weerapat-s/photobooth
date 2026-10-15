@@ -26,7 +26,7 @@ const usesPairedKiosk = () => isSelfService();
 const customerPicksLayout = () => cfg.layoutChoice === 'customer' && (cfg.layouts || []).length > 1;
 // เจ้าหน้าที่กดชัตเตอร์ที่ตัวกล้องเอง โปรแกรมแค่รอไฟล์เข้ามา ไม่สั่งถ่าย
 // ไม่ผูกกับ captureSource เพื่อลดทางที่จะเพี้ยน — ถ้าเซิร์ฟเวอร์บอกว่า manual จอต้องไม่สั่งถ่ายเด็ดขาด
-const manualShutter = () => cfg.shutterMode === 'manual' && !isWebCamera();
+const manualShutter = () => cfg.shutterMode === 'manual' && cfg.captureSource === 'digicam';
 const WAIT_TEXT = 'เจ้าหน้าที่กดชัตเตอร์ที่กล้องได้เลย';
 const startPath = () => usesPairedKiosk() ? '/api/web/session' : '/api/start';
 const resetPath = () => usesPairedKiosk() ? '/api/web/session/reset' : '/api/reset';
@@ -484,6 +484,10 @@ async function boot() {
   if (await reloadIfStale(publicConfig.kioskBuild)) return;
   cfg = { ...cfg, ...publicConfig };
   if (usesPairedKiosk()) {
+    const pairParam = new URLSearchParams(window.location.search).get('pair');
+    if (pairParam) {
+      await api('/api/web/pair', { method: 'POST', body: JSON.stringify({ token: pairParam }) }).catch(() => {});
+    }
     try {
       const bootstrap = await api('/api/web/bootstrap');
       cfg = { ...cfg, ...bootstrap.config };

@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 <#
   ตัวติดตั้ง Photo Booth — ทำงานจากโฟลเดอร์ที่ PhotoBoothSetup.exe แตกไฟล์ออกมา
 
@@ -147,23 +147,44 @@ if (Test-Path -LiteralPath $dccExe) {
 } elseif ($SkipCamera) {
   Warn 'ข้ามการติดตั้ง digiCamControl ตามที่สั่ง — ยังถ่ายด้วยกล้องจริงไม่ได้'
 } else {
-  Info 'ยังไม่มี กำลังดาวน์โหลดจากเว็บทางการ (ประมาณ 70-90 MB)...'
-  $installer = Join-Path $env:TEMP ('digiCamControlSetup-' + [guid]::NewGuid().ToString('N') + '.exe')
-  $sources = @(
-    'https://sourceforge.net/projects/digicamcontrol/files/digiCamControlsetup_2.1.7.0.exe/download',
-    'https://github.com/dukus/digiCamControl/releases/download/2.0.26/digiCamControlsetup_2.0.26.0.exe'
-  )
-  $got = $false
-  foreach ($url in $sources) {
-    try {
-      Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing -TimeoutSec 600 -ErrorAction Stop
-      if ((Get-Item -LiteralPath $installer).Length -gt 10MB) { $got = $true; break }
-    } catch {
-      Info "โหลดจาก $($url.Split('/')[2]) ไม่สำเร็จ ลองแหล่งถัดไป"
+  $localDcc = $null
+  foreach ($dir in @($Source, (Join-Path $Source 'packages'), (Join-Path $PSScriptRoot 'packages'))) {
+    if (Test-Path -LiteralPath $dir) {
+      $candidate = Get-ChildItem -LiteralPath $dir -Filter 'digiCamControlsetup*.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+      if ($candidate) { $localDcc = $candidate.FullName; break }
     }
   }
-  if ($got) {
-    Info 'กำลังติดตั้ง (Windows จะถามสิทธิ์ผู้ดูแล — กดยืนยัน)'
+
+  $installer = $null
+  $isTempDownload = $false
+  if ($localDcc) {
+    Ok "พบตัวติดตั้ง digiCamControl ในชุด ($(Split-Path -Leaf $localDcc)) ไม่ต้องดาวน์โหลด"
+    $installer = $localDcc
+  } else {
+    Info 'ยังไม่มี กำลังดาวน์โหลดจากเว็บทางการ (ประมาณ 70-90 MB)...'
+    $installer = Join-Path $env:TEMP ('digiCamControlSetup-' + [guid]::NewGuid().ToString('N') + '.exe')
+    $isTempDownload = $true
+    $sources = @(
+      'https://sourceforge.net/projects/digicamcontrol/files/digiCamControlsetup_2.1.7.0.exe/download',
+      'https://github.com/dukus/digiCamControl/releases/download/2.0.26/digiCamControlsetup_2.0.26.0.exe'
+    )
+    $got = $false
+    foreach ($url in $sources) {
+      try {
+        Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing -TimeoutSec 600 -ErrorAction Stop
+        if ((Get-Item -LiteralPath $installer).Length -gt 10MB) { $got = $true; break }
+      } catch {
+        Info "โหลดจาก $($url.Split('/')[2]) ไม่สำเร็จ ลองแหล่งถัดไป"
+      }
+    }
+    if (-not $got) {
+      $installer = $null
+      Warn 'ดาวน์โหลด digiCamControl ไม่สำเร็จ — ติดตั้งเองจาก digicamcontrol.com แล้วรีสตาร์ต Windows'
+    }
+  }
+
+  if ($installer) {
+    Info 'กำลังติดตั้ง digiCamControl (Windows จะถามสิทธิ์ผู้ดูแล — กดยืนยัน)...'
     try {
       $proc = Start-Process -FilePath $installer -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
       if ((Test-Path -LiteralPath $dccExe)) { Ok 'ติดตั้ง digiCamControl เรียบร้อย' }
@@ -171,9 +192,9 @@ if (Test-Path -LiteralPath $dccExe) {
     } catch {
       Warn "สั่งติดตั้ง digiCamControl ไม่สำเร็จ: $($_.Exception.Message)"
     }
-    Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
-  } else {
-    Warn 'ดาวน์โหลด digiCamControl ไม่สำเร็จ — ติดตั้งเองจาก digicamcontrol.com แล้วรีสตาร์ต Windows'
+    if ($isTempDownload) {
+      Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
+    }
   }
 }
 
@@ -183,6 +204,22 @@ if (Test-Path -LiteralPath $ffmpeg) {
 } else {
   Warn 'ไม่พบ ffmpeg — การ์ดกับ QR ยังทำงาน แต่วิดีโอจะไม่ออก ต้องติดตั้ง digiCamControl ให้ได้ก่อน'
 }
+
+# ติดตั้ง cloudflared ถ้ามีแนบมาในชุด
+$localCf = $null
+foreach ($dir in @($Source, (Join-Path $Source 'packages'), (Join-Path $PSScriptRoot 'packages'))) {
+  if (Test-Path -LiteralPath $dir) {
+    $cfPath = Join-Path $dir 'cloudflared.exe'
+    if (Test-Path -LiteralPath $cfPath) { $localCf = $cfPath; break }
+  }
+}
+if ($localCf) {
+  $targetBin = Join-Path $Target 'bin'
+  New-Item -ItemType Directory -Path $targetBin -Force | Out-Null
+  Copy-Item -LiteralPath $localCf -Destination (Join-Path $targetBin 'cloudflared.exe') -Force
+  Ok 'ติดตั้ง cloudflared สำหรับเชื่อมต่อจอ iPad เรียบร้อย'
+}
+
 
 # ── 6. ไอคอนและช็อตคัต ───────────────────────────────────────────────────────
 Step 'ไอคอนและช็อตคัต'
