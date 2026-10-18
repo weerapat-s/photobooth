@@ -4,17 +4,21 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>จอช่าง — Photo Booth</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Prompt:wght@400;500;600;700;800&family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
   body {
     margin: 0; padding: 24px;
     background: #0d0d12; color: #f2f2f5;
-    font-family: "Sarabun", "Segoe UI", system-ui, sans-serif;
+    font-family: "Prompt", "Sarabun", "Plus Jakarta Sans", "Segoe UI", system-ui, sans-serif;
   }
   h1 { font-size: 22px; margin: 0 0 16px; }
   h2 { font-size: 16px; margin: 0 0 12px; color: #b9b9c6; font-weight: 600; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; }
   .card { background: #17171f; border: 1px solid #26262f; border-radius: 14px; padding: 18px; }
   .row { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #23232c; }
   .row:last-child { border: none; }
@@ -29,10 +33,39 @@
     font: inherit; font-weight: 600;
     padding: 11px 20px; border: none; border-radius: 10px;
     background: #ff4d6d; color: #fff; cursor: pointer;
+    transition: filter .15s, transform .1s, background-color .15s;
   }
+  button:hover:not(:disabled) { filter: brightness(1.1); }
+  button:active:not(:disabled) { transform: scale(0.98); }
   button.ghost { background: #23232e; color: #e8e8ef; }
   button:disabled { opacity: .45; cursor: default; }
   button.secondary { background: #34465f; color: #e2edff; }
+  button.start-action { background: #e11d48; color: #fff; }
+  button.primary-action { background: #2563eb; color: #fff; }
+  button.success-action { background: #059669; color: #fff; }
+  button:focus-visible, input:focus-visible, select:focus-visible {
+    outline: 2px solid #ffd166;
+    outline-offset: 2px;
+  }
+  .settings-group {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px dashed #30303c;
+  }
+  .settings-group:first-of-type {
+    margin-top: 8px;
+    padding-top: 0;
+    border-top: none;
+  }
+  .settings-group-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #ffd166;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
   .btns { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
   input, select {
     font: inherit; width: 100%;
@@ -72,9 +105,9 @@
     <div class="row"><b>ข้อความ</b><span id="msg">-</span></div>
     <div class="slot-grid" id="slots"></div>
     <div class="btns">
-      <button id="btn-start">เริ่มเซสชันใหม่</button>
-      <button id="btn-capture">ถ่ายช่องถัดไป</button>
-      <button id="btn-finish">ยืนยันรูปทั้งหมด + จบงาน</button>
+      <button id="btn-start" class="start-action">เริ่มเซสชันใหม่</button>
+      <button id="btn-capture" class="primary-action">ถ่ายช่องถัดไป</button>
+      <button id="btn-finish" class="success-action">ยืนยันรูปทั้งหมด + จบงาน</button>
       <button class="ghost" id="btn-discard">ทิ้งเซสชัน</button>
     </div>
     <div class="msg" id="action-msg"></div>
@@ -124,104 +157,114 @@
 
   <div class="card">
     <h2>ตั้งค่า</h2>
-    <label>รูปแบบการใช้งานหน้าจอลูกค้า</label>
-    <select id="in-kiosk-mode">
-      <option value="operator">เจ้าหน้าที่ควบคุม — จอลูกค้าใช้ดูอย่างเดียว</option>
-      <option value="self_service">บริการตัวเอง — ลูกค้ากดเริ่ม ตรวจรูป และถ่ายซ้ำเอง</option>
-    </select>
 
-    <label>แหล่งภาพ</label>
-    <select id="in-source">
-      <option value="digicam">digicam — เจ้าหน้าที่กดถ่ายผ่าน digiCamControl</option>
-      <option value="folder">folder — เฝ้าโฟลเดอร์ Capture One (ช่างกดชัตเตอร์เอง)</option>
-      <option value="mock">mock — ภาพปลอม ไว้เทสต์</option>
-      <option value="web">web — เว็บ PWA ใช้กล้องของ iPad โดยตรง (ไม่ต้องติดตั้งแอป)</option>
-      <option value="ipad">ipad — แอป Native iPad คุม EOS R ผ่าน USB และส่งภาพเข้าเซิร์ฟเวอร์</option>
-    </select>
-
-    <label>การตรวจกล้อง (โหมดทดสอบ / Bypass Camera)</label>
-    <select id="in-bypass-camera">
-      <option value="false">ตรวจกล้องตามปกติ (สำหรับต่อกล้องจริง)</option>
-      <option value="true">ข้ามการตรวจกล้องชั่วคราว (สำหรับทดสอบระบบ)</option>
-    </select>
-
-    <label>นับถอยหลังก่อนแต่ละช็อต (วินาที) — โหมด digicam/web</label>
-    <input id="in-countdown" type="number" min="0" max="10">
-
-    <label>กล้องสำหรับโหมด web</label>
-    <select id="in-web-facing">
-      <option value="user">กล้องหน้า — ลูกค้าเห็นตัวเอง</option>
-      <option value="environment">กล้องหลัง — คุณภาพสูงกว่า</option>
-    </select>
-
-    <label>บันทึกภาพแบบกระจกในโหมด web</label>
-    <select id="in-web-mirror">
-      <option value="true">ใช่ — เหมือนภาพที่เห็นบนจอ</option>
-      <option value="false">ไม่ — บันทึกตามทิศจริงของกล้อง</option>
-    </select>
-
-    <label>โฟลเดอร์ Capture ของ Capture One — เฉพาะโหมด folder</label>
-    <input id="in-watch" placeholder="เช่น D:\งานรับน้อง\Capture">
-    <div class="browser" id="browser"></div>
-
-    <label>ใครกดชัตเตอร์</label>
-    <select id="in-shutter">
-      <option value="software">โปรแกรมสั่งกล้องถ่ายให้</option>
-      <option value="manual">เจ้าหน้าที่กดที่ตัวกล้องเอง</option>
-    </select>
-    <p class="hint">โหมดเจ้าหน้าที่กดเอง: โปรแกรมจะเฝ้าโฟลเดอร์ของเซสชัน ภาพที่กล้องส่งลงมาจะเข้าช่องว่างเรียงกันเอง (ใช้ได้กับ digicam เท่านั้น)</p>
-
-    <label>จำนวนช็อตต่อเซสชัน</label>
-    <input id="in-shots" type="number" min="1" max="8">
-
-    <label>การ์ดใช้ช็อตล่าสุดกี่ภาพ (วิดีโอยังใช้ครบทุกช็อต)</label>
-    <input id="in-printshots" type="number" min="1" max="8">
-
-    <label>ปิดเซสชันอัตโนมัติถ้าเงียบเกิน (วินาที)</label>
-    <input id="in-idle" type="number" min="5" max="180">
-
-    <label>ชื่องาน (โชว์บนสตริปและจอลูกค้า)</label>
-    <input id="in-event">
-
-    <label>แบบการ์ด (เทมเพลตสำเร็จรูป)</label>
-    <select id="in-card-layout"></select>
-    <div class="btns"><button class="secondary" type="button" id="btn-add-layout">+ เพิ่มธีมจากไฟล์ PNG</button></div>
-    <div class="add-layout-box" id="add-layout-box" hidden>
-      <label for="in-layout-name">ชื่อธีม</label>
-      <input id="in-layout-name" maxlength="80" placeholder="เช่น Alumni Reunion 2026">
-      <label for="in-layout-half">ส่วนของภาพที่จะใช้</label>
-      <select id="in-layout-half">
-        <option value="left">ครึ่งซ้าย — สตริปด้านซ้าย</option>
-        <option value="right">ครึ่งขวา — สตริปด้านขวา</option>
-        <option value="full">ทั้งภาพ — เทมเพลตแผ่นเดียว</option>
+    <div class="settings-group">
+      <div class="settings-group-title">📷 การทำงานของกล้องและการถ่าย</div>
+      <label>รูปแบบการใช้งานหน้าจอลูกค้า</label>
+      <select id="in-kiosk-mode">
+        <option value="operator">เจ้าหน้าที่ควบคุม — จอลูกค้าใช้ดูอย่างเดียว</option>
+        <option value="self_service">บริการตัวเอง — ลูกค้ากดเริ่ม ตรวจรูป และถ่ายซ้ำเอง</option>
       </select>
-      <label for="in-layout-file">ไฟล์เทมเพลต PNG (ไม่เกิน 12 MB)</label>
-      <input id="in-layout-file" type="file" accept="image/png,.png">
-      <p class="hint">เว้นช่องใส่รูปเป็นสีขาว ระบบจะตรวจหาช่องให้อัตโนมัติ เช่น ไฟล์ 4×6 ที่มีสตริปซ้ายและขวา ให้เลือก “ครึ่งซ้าย” หรือ “ครึ่งขวา”</p>
-      <div class="btns">
-        <button type="button" id="btn-upload-layout">เพิ่มธีม</button>
-        <button type="button" class="ghost" id="btn-cancel-layout">ยกเลิก</button>
-      </div>
-      <div class="msg" id="add-layout-msg"></div>
+
+      <label>แหล่งภาพ</label>
+      <select id="in-source">
+        <option value="digicam">digicam — เจ้าหน้าที่กดถ่ายผ่าน digiCamControl</option>
+        <option value="folder">folder — เฝ้าโฟลเดอร์ Capture One (ช่างกดชัตเตอร์เอง)</option>
+        <option value="mock">mock — ภาพปลอม ไว้เทสต์</option>
+        <option value="web">web — เว็บ PWA ใช้กล้องของ iPad โดยตรง (ไม่ต้องติดตั้งแอป)</option>
+        <option value="ipad">ipad — แอป Native iPad คุม EOS R ผ่าน USB และส่งภาพเข้าเซิร์ฟเวอร์</option>
+      </select>
+
+      <label>การตรวจกล้อง (โหมดทดสอบ / Bypass Camera)</label>
+      <select id="in-bypass-camera">
+        <option value="false">ตรวจกล้องตามปกติ (สำหรับต่อกล้องจริง)</option>
+        <option value="true">ข้ามการตรวจกล้องชั่วคราว (สำหรับทดสอบระบบ)</option>
+      </select>
+
+      <label>ใครกดชัตเตอร์</label>
+      <select id="in-shutter">
+        <option value="software">โปรแกรมสั่งกล้องถ่ายให้</option>
+        <option value="manual">เจ้าหน้าที่กดที่ตัวกล้องเอง</option>
+      </select>
+      <p class="hint">โหมดเจ้าหน้าที่กดเอง: โปรแกรมจะเฝ้าโฟลเดอร์ของเซสชัน ภาพที่กล้องส่งลงมาจะเข้าช่องว่างเรียงกันเอง (ใช้ได้กับ digicam เท่านั้น)</p>
+
+      <label>นับถอยหลังก่อนแต่ละช็อต (วินาที) — โหมด digicam/web</label>
+      <input id="in-countdown" type="number" min="0" max="10">
+
+      <label>กล้องสำหรับโหมด web</label>
+      <select id="in-web-facing">
+        <option value="user">กล้องหน้า — ลูกค้าเห็นตัวเอง</option>
+        <option value="environment">กล้องหลัง — คุณภาพสูงกว่า</option>
+      </select>
+
+      <label>บันทึกภาพแบบกระจกในโหมด web</label>
+      <select id="in-web-mirror">
+        <option value="true">ใช่ — เหมือนภาพที่เห็นบนจอ</option>
+        <option value="false">ไม่ — บันทึกตามทิศจริงของกล้อง</option>
+      </select>
+
+      <label>โฟลเดอร์ Capture ของ Capture One — เฉพาะโหมด folder</label>
+      <input id="in-watch" placeholder="เช่น D:\งานรับน้อง\Capture">
+      <div class="browser" id="browser"></div>
     </div>
 
-    <label>ให้ลูกค้าเลือกแบบการ์ดเองไหม</label>
-    <select id="in-card-layout-choice">
-      <option value="fixed">ไม่ให้เลือก — ใช้แบบที่ตั้งไว้ด้านบน</option>
-      <option value="customer">ให้เลือกเอง — โชว์หน้าเลือกก่อนเริ่มถ่าย</option>
-    </select>
-    <p class="hint" id="card-layout-hint"></p>
+    <div class="settings-group">
+      <div class="settings-group-title">🎨 เลย์เอาต์และธีมการ์ด</div>
+      <label>แบบการ์ด (เทมเพลตสำเร็จรูป)</label>
+      <select id="in-card-layout"></select>
+      <div class="btns"><button class="secondary" type="button" id="btn-add-layout">+ เพิ่มธีมจากไฟล์ PNG</button></div>
+      <div class="add-layout-box" id="add-layout-box" hidden>
+        <label for="in-layout-name">ชื่อธีม</label>
+        <input id="in-layout-name" maxlength="80" placeholder="เช่น Alumni Reunion 2026">
+        <label for="in-layout-half">ส่วนของภาพที่จะใช้</label>
+        <select id="in-layout-half">
+          <option value="left">ครึ่งซ้าย — สตริปด้านซ้าย</option>
+          <option value="right">ครึ่งขวา — สตริปด้านขวา</option>
+          <option value="full">ทั้งภาพ — เทมเพลตแผ่นเดียว</option>
+        </select>
+        <label for="in-layout-file">ไฟล์เทมเพลต PNG (ไม่เกิน 12 MB)</label>
+        <input id="in-layout-file" type="file" accept="image/png,.png">
+        <p class="hint">เว้นช่องใส่รูปเป็นสีขาว ระบบจะตรวจหาช่องให้อัตโนมัติ เช่น ไฟล์ 4×6 ที่มีสตริปซ้ายและขวา ให้เลือก “ครึ่งซ้าย” หรือ “ครึ่งขวา”</p>
+        <div class="btns">
+          <button type="button" id="btn-upload-layout">เพิ่มธีม</button>
+          <button type="button" class="ghost" id="btn-cancel-layout">ยกเลิก</button>
+        </div>
+        <div class="msg" id="add-layout-msg"></div>
+      </div>
 
-    <label>เลย์เอาต์สำรอง (ใช้เมื่อไม่มีเทมเพลตสำเร็จรูป)</label>
-    <select id="in-layout">
-      <option value="strip2x6">strip2x6 — สตริปแนวตั้ง</option>
-      <option value="grid4x6">grid4x6 — ตาราง 2x2 ธีมมืด</option>
-    </select>
+      <label>ให้ลูกค้าเลือกแบบการ์ดเองไหม</label>
+      <select id="in-card-layout-choice">
+        <option value="fixed">ไม่ให้เลือก — ใช้แบบที่ตั้งไว้ด้านบน</option>
+        <option value="customer">ให้เลือกเอง — โชว์หน้าเลือกก่อนเริ่มถ่าย</option>
+      </select>
+      <p class="hint" id="card-layout-hint"></p>
 
-    <label>สีพื้นหลังธีมการ์ด</label>
-    <input id="in-themecolor" type="color">
+      <label>เลย์เอาต์สำรอง (ใช้เมื่อไม่มีเทมเพลตสำเร็จรูป)</label>
+      <select id="in-layout">
+        <option value="strip2x6">strip2x6 — สตริปแนวตั้ง</option>
+        <option value="grid4x6">grid4x6 — ตาราง 2x2 ธีมมืด</option>
+      </select>
 
-    <div class="btns"><button id="btn-save">บันทึก</button></div>
+      <label>สีพื้นหลังธีมการ์ด</label>
+      <input id="in-themecolor" type="color">
+    </div>
+
+    <div class="settings-group">
+      <div class="settings-group-title">⚙️ การตั้งค่าเซสชันและระบบ</div>
+      <label>ชื่องาน (โชว์บนสตริปและจอลูกค้า)</label>
+      <input id="in-event">
+
+      <label>จำนวนช็อตต่อเซสชัน</label>
+      <input id="in-shots" type="number" min="1" max="8">
+
+      <label>การ์ดใช้ช็อตล่าสุดกี่ภาพ (วิดีโอยังใช้ครบทุกช็อต)</label>
+      <input id="in-printshots" type="number" min="1" max="8">
+
+      <label>ปิดเซสชันอัตโนมัติถ้าเงียบเกิน (วินาที)</label>
+      <input id="in-idle" type="number" min="5" max="180">
+    </div>
+
+    <div class="btns" style="margin-top: 16px;"><button id="btn-save" class="start-action" style="padding: 12px 32px; font-size: 15px;">💾 บันทึกการตั้งค่า</button></div>
     <div class="msg" id="save-msg"></div>
   </div>
 
@@ -344,7 +387,7 @@ async function loadConfig() {
   $('in-shutter').value = c.shutterMode || 'software';
   $('in-web-facing').value = c.webCameraFacing || 'user';
   $('in-web-mirror').value = String(c.webMirror ?? true);
-  $('in-watch').value = c.watchDir || '';
+  $('in-watch').value = (c.watchDir || '').replace(/\\{2,}/g, '\\');
   $('in-shots').value = c.shots;
   $('in-printshots').value = c.printShots;
   $('in-idle').value = c.sessionIdleSeconds;
@@ -541,7 +584,7 @@ $('btn-save').onclick = async () => {
         SHUTTER: $('in-shutter').value,
         WEB_CAMERA_FACING: $('in-web-facing').value,
         WEB_MIRROR: $('in-web-mirror').value,
-        WATCH_DIR: $('in-watch').value.trim(),
+        WATCH_DIR: $('in-watch').value.trim().replace(/\\{2,}/g, '\\'),
         SHOTS: Number($('in-shots').value),
         PRINT_SHOTS: Number($('in-printshots').value),
         SESSION_IDLE_SECONDS: Number($('in-idle').value),

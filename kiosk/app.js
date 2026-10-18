@@ -215,20 +215,25 @@ async function refreshCameraStatus({ showChecking = false } = {}) {
     box.className = 'camera-ready ' + (cameraReady ? 'ok' : 'bad');
     $('camera-ready-text').textContent = cameraReady
       ? `กล้องพร้อม · ${status.transport || 'digiCamControl'}`
-      : (status.error || 'ยังไม่พบกล้อง');
+      : (isSelfService() ? 'ตู้กำลังเชื่อมต่อกล้อง · กรุณาแจ้งเจ้าหน้าที่หากนานเกินไป' : (status.error || 'ยังไม่พบกล้อง'));
     if (screens.idle.hidden === false) $('btn-start').disabled = !cameraReady;
-    if (cameraReady && $('idle-hint').textContent.startsWith('กล้องยังไม่พร้อม')) $('idle-hint').textContent = '';
+    if (cameraReady && $('idle-hint').textContent.includes('กล้อง')) $('idle-hint').textContent = '';
   } catch (err) {
     cameraReady = false;
     box.className = 'camera-ready bad';
-    $('camera-ready-text').textContent = 'ติดต่อ Windows bridge ไม่ได้';
+    $('camera-ready-text').textContent = isSelfService()
+      ? 'ติดต่อระบบควบคุมกล้องไม่ได้ · กรุณาแจ้งเจ้าหน้าที่'
+      : 'ติดต่อ Windows bridge ไม่ได้';
     if (screens.idle.hidden === false) $('btn-start').disabled = true;
   } finally {
     cameraStatusPending = false;
   }
 }
 
-$('btn-camera-retry').onclick = () => refreshCameraStatus({ showChecking: true });
+$('btn-camera-retry').onclick = (e) => {
+  e.stopPropagation();
+  refreshCameraStatus({ showChecking: true });
+};
 
 $('btn-pair').onclick = async () => {
   const token = $('pair-token').value.trim();
@@ -245,17 +250,32 @@ $('btn-pair').onclick = async () => {
   }
 };
 
-$('btn-start').onclick = async () => {
+async function triggerStart() {
+  if (screens.idle.hidden || $('btn-start').hidden) return;
   if (cfg.captureSource === 'digicam' && !cameraReady) {
+    $('idle-hint').textContent = 'ระบบกำลังรอกล้องพร้อมใช้งาน กรุณารอสักครู่หรือแจ้งเจ้าหน้าที่';
     await refreshCameraStatus({ showChecking: true });
     if (!cameraReady) return;
   }
+  if ($('btn-start').disabled) return;
   if (customerPicksLayout()) {
     renderLayoutPicker();
     show('layout');
     return;
   }
   await beginShooting(null);
+}
+
+$('btn-start').onclick = (e) => {
+  e.stopPropagation();
+  triggerStart();
+};
+
+screens.idle.onclick = (e) => {
+  if (e.target.closest('#btn-camera-retry') || e.target.closest('#install-hint') || e.target.closest('#pair-token')) return;
+  if (isSelfService() && !$('btn-start').hidden) {
+    triggerStart();
+  }
 };
 
 $('btn-layout-back').onclick = () => show('idle');

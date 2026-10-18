@@ -10,7 +10,7 @@ html, body { height: 100%; }
 body {
   background: var(--bg);
   color: var(--fg);
-  font-family: "Sarabun", "Segoe UI", system-ui, sans-serif;
+  font-family: "Prompt", "Sarabun", "Plus Jakarta Sans", "Segoe UI", system-ui, sans-serif;
   overflow: hidden;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
@@ -38,7 +38,13 @@ h2 { font-size: clamp(24px, 3.5vw, 44px); }
 .queue-number { font-size: clamp(20px, 2.4vw, 30px); font-weight: 800; color: var(--accent-2); }
 .err { color: var(--accent); font-size: 20px; max-width: 60ch; }
 
-.idle-inner { display: flex; flex-direction: column; align-items: center; gap: 28px; }
+.idle-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+  cursor: pointer;
+}
 .setup-card {
   width: min(620px, 92vw);
   display: flex;
@@ -85,7 +91,26 @@ h2 { font-size: clamp(24px, 3.5vw, 44px); }
 .camera-ready.ok { color: #77e2a8; border-color: rgba(119, 226, 168, .35); }
 .camera-ready.bad { color: #ff9aab; border-color: rgba(255, 77, 109, .35); }
 .camera-dot { width: 10px; height: 10px; border-radius: 50%; background: currentColor; box-shadow: 0 0 12px currentColor; }
-.mini-btn { border: 0; background: transparent; color: inherit; font: inherit; font-weight: 700; cursor: pointer; padding: 4px 6px; }
+.mini-btn {
+  border: 1px solid currentColor;
+  background: rgba(255, 255, 255, .08);
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 8px 16px;
+  min-height: 44px;
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  margin-left: 6px;
+  transition: background-color .15s, transform .1s;
+}
+.mini-btn:hover { background: rgba(255, 255, 255, .16); }
+.mini-btn:active { transform: scale(.96); }
 .big-btn {
   font: inherit;
   font-size: clamp(22px, 2.6vw, 34px);
@@ -97,9 +122,20 @@ h2 { font-size: clamp(24px, 3.5vw, 44px); }
   color: #fff;
   cursor: pointer;
   box-shadow: 0 12px 40px rgba(255, 77, 109, .35);
+  transition: transform .1s, background-color .15s, box-shadow .15s;
 }
 .big-btn:active { transform: scale(.97); }
-.big-btn:disabled { opacity: .5; box-shadow: none; }
+.big-btn:disabled {
+  background: #3a3a46;
+  color: #b5b5c2;
+  opacity: .8;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+button:focus-visible, input:focus-visible, .layout-card:focus-visible {
+  outline: 3px solid var(--accent-2);
+  outline-offset: 3px;
+}
 .ghost-btn {
   font: inherit;
   font-size: 20px;
@@ -109,7 +145,9 @@ h2 { font-size: clamp(24px, 3.5vw, 44px); }
   background: transparent;
   color: var(--fg);
   cursor: pointer;
+  transition: transform .1s, border-color .15s;
 }
+.ghost-btn:active { transform: scale(.97); }
 .text-btn {
   font: inherit;
   font-size: 17px;
@@ -252,7 +290,21 @@ h2 { font-size: clamp(24px, 3.5vw, 44px); }
 }
 
 /* หน้าเลือกแบบการ์ด — โชว์เฉพาะตอนเปิดให้ลูกค้าเลือกเองและมีมากกว่าหนึ่งแบบ */
-.layout-inner { display: flex; flex-direction: column; align-items: center; gap: clamp(10px, 2dvh, 22px); width: 100%; }
+#screen-layout {
+  justify-content: flex-start;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: max(36px, env(safe-area-inset-bottom));
+}
+.layout-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(12px, 2.2dvh, 24px);
+  width: 100%;
+  margin: auto 0;
+  padding: 16px 0;
+}
 .layout-grid {
   display: flex;
   gap: clamp(16px, 3vw, 40px);

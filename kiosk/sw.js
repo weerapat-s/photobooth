@@ -1,4 +1,4 @@
-const CACHE = 'photobooth-shell-v8';
+const CACHE = 'photobooth-shell-v9';
 const SHELL = ['/', '/index.html', '/style.css', '/app.js', '/manifest.webmanifest', '/icon.svg'];
 
 self.addEventListener('install', (event) => {
