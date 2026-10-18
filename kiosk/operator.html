@@ -32,6 +32,7 @@
   }
   button.ghost { background: #23232e; color: #e8e8ef; }
   button:disabled { opacity: .45; cursor: default; }
+  button.secondary { background: #34465f; color: #e2edff; }
   .btns { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
   input, select {
     font: inherit; width: 100%;
@@ -53,6 +54,9 @@
   .ok { color: #8ef0ae; } .bad { color: #ff8fa3; } .warn { color: #ffd166; }
   .msg { min-height: 20px; font-size: 13px; margin-top: 10px; white-space: pre-line; }
   code { color: #ffd166; font-size: 12px; word-break: break-all; }
+  .add-layout-box { margin-top: 10px; padding: 12px; border: 1px solid #30303b; border-radius: 10px; background: #111119; }
+  .add-layout-box[hidden] { display: none; }
+  .hint { color: #9a9aa8; font-size: 12px; line-height: 1.5; }
 </style>
 </head>
 <body>
@@ -101,6 +105,21 @@
       <button class="ghost" id="btn-clean-now">ลบรายการหมดอายุ</button>
     </div>
     <div class="msg" id="cleanup-msg"></div>
+  </div>
+
+  <div class="card">
+    <h2>ระบบรักษาตัวเองและอัปเดตอัตโนมัติ (Self-Healing & Auto-Update)</h2>
+    <div class="row"><b>ระบบเฝ้าระวังและอุดรอยรั่ว</b><span class="pill shooting" id="heal-active">● ทำงานอัตโนมัติ 24/7</span></div>
+    <div class="row"><b>เวอร์ชันโค้ด / อัปเดต</b><span id="update-status">กำลังตรวจอัปเดต...</span></div>
+    <div class="row"><b>การรักษาล่าสุด</b><span id="heal-last">ระบบปกติ</span></div>
+    <label>บันทึกเหตุการณ์การรักษาตัวเอง (Self-Healing Log):</label>
+    <div class="browser" id="heal-log" style="max-height: 150px; font-size: 12px;"></div>
+    <div class="btns">
+      <button id="btn-self-heal" class="secondary">🩺 ตรวจและรักษาตัวเองทันที</button>
+      <button id="btn-auto-update">🔄 ตรวจและอัปเดตโค้ดอัตโนมัติ</button>
+      <button class="ghost danger" id="btn-safe-restart">♻️ รีสตาร์ทอย่างปลอดภัย</button>
+    </div>
+    <div class="msg" id="heal-msg"></div>
   </div>
 
   <div class="card">
@@ -166,6 +185,25 @@
 
     <label>แบบการ์ด (เทมเพลตสำเร็จรูป)</label>
     <select id="in-card-layout"></select>
+    <div class="btns"><button class="secondary" type="button" id="btn-add-layout">+ เพิ่มธีมจากไฟล์ PNG</button></div>
+    <div class="add-layout-box" id="add-layout-box" hidden>
+      <label for="in-layout-name">ชื่อธีม</label>
+      <input id="in-layout-name" maxlength="80" placeholder="เช่น Alumni Reunion 2026">
+      <label for="in-layout-half">ส่วนของภาพที่จะใช้</label>
+      <select id="in-layout-half">
+        <option value="left">ครึ่งซ้าย — สตริปด้านซ้าย</option>
+        <option value="right">ครึ่งขวา — สตริปด้านขวา</option>
+        <option value="full">ทั้งภาพ — เทมเพลตแผ่นเดียว</option>
+      </select>
+      <label for="in-layout-file">ไฟล์เทมเพลต PNG (ไม่เกิน 12 MB)</label>
+      <input id="in-layout-file" type="file" accept="image/png,.png">
+      <p class="hint">เว้นช่องใส่รูปเป็นสีขาว ระบบจะตรวจหาช่องให้อัตโนมัติ เช่น ไฟล์ 4×6 ที่มีสตริปซ้ายและขวา ให้เลือก “ครึ่งซ้าย” หรือ “ครึ่งขวา”</p>
+      <div class="btns">
+        <button type="button" id="btn-upload-layout">เพิ่มธีม</button>
+        <button type="button" class="ghost" id="btn-cancel-layout">ยกเลิก</button>
+      </div>
+      <div class="msg" id="add-layout-msg"></div>
+    </div>
 
     <label>ให้ลูกค้าเลือกแบบการ์ดเองไหม</label>
     <select id="in-card-layout-choice">
@@ -332,6 +370,67 @@ async function loadConfig() {
   browse(c.watchDir || null);
 }
 
+function readFileDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('อ่านไฟล์ไม่สำเร็จ'));
+    reader.readAsDataURL(file);
+  });
+}
+
+$('btn-add-layout').onclick = () => {
+  $('add-layout-box').hidden = false;
+  $('in-layout-name').focus();
+};
+$('btn-cancel-layout').onclick = () => {
+  $('add-layout-box').hidden = true;
+  $('add-layout-msg').textContent = '';
+};
+$('in-layout-file').onchange = () => {
+  const file = $('in-layout-file').files[0];
+  if (file && !$('in-layout-name').value.trim()) {
+    $('in-layout-name').value = file.name.replace(/\.png$/i, '');
+  }
+};
+$('btn-upload-layout').onclick = async () => {
+  const file = $('in-layout-file').files[0];
+  const name = $('in-layout-name').value.trim();
+  const msg = $('add-layout-msg');
+  if (!file) { msg.textContent = 'กรุณาเลือกไฟล์ PNG'; msg.className = 'msg bad'; return; }
+  if (file.type !== 'image/png' && !file.name.toLowerCase().endsWith('.png')) {
+    msg.textContent = 'รองรับเฉพาะไฟล์ PNG'; msg.className = 'msg bad'; return;
+  }
+  if (file.size > 12 * 1024 * 1024) {
+    msg.textContent = 'ไฟล์ต้องมีขนาดไม่เกิน 12 MB'; msg.className = 'msg bad'; return;
+  }
+  msg.textContent = 'กำลังตรวจและเพิ่มธีม...';
+  msg.className = 'msg';
+  $('btn-upload-layout').disabled = true;
+  try {
+    const data = await api('/api/layouts', {
+      method: 'POST',
+      body: JSON.stringify({ name, half: $('in-layout-half').value, image: await readFileDataUrl(file) }),
+    });
+    const option = document.createElement('option');
+    option.value = data.layout.id;
+    option.textContent = data.layout.name;
+    $('in-card-layout').append(option);
+    $('in-card-layout').value = data.layout.id;
+    $('in-card-layout').disabled = false;
+    const count = $('in-card-layout').options.length;
+    $('card-layout-hint').textContent = `มี ${count} แบบให้เลือก`;
+    msg.textContent = `เพิ่มธีมสำเร็จ พบช่องรูป ${data.slots} ช่อง — กด “บันทึก” ด้านล่างเพื่อตั้งเป็นธีมหลัก`;
+    msg.className = 'msg ok';
+    $('in-layout-file').value = '';
+  } catch (err) {
+    msg.textContent = err.message;
+    msg.className = 'msg bad';
+  } finally {
+    $('btn-upload-layout').disabled = false;
+  }
+};
+
 async function runPreflight() {
   $('preflight-msg').textContent = 'กำลังตรวจกล้อง ดิสก์ และ Nextcloud...';
   try {
@@ -490,12 +589,95 @@ $('btn-cal-grid').onclick = () => window.open('/api/calibration?layout=grid4x6',
 $('btn-clean-preview').onclick = () => cleanup(true);
 $('btn-clean-now').onclick = () => cleanup(false);
 
+async function refreshSelfHeal() {
+  try {
+    const data = await api('/api/self-heal/status');
+    const u = data.update;
+    if (u) {
+      if (u.error) {
+        $('update-status').innerHTML = '<span class="bad">ตรวจอัปเดตไม่สำเร็จ: ' + u.error + '</span>';
+      } else if (u.updateAvailable) {
+        $('update-status').innerHTML = '<span class="warn">มีอัปเดตใหม่ (' + u.behind + ' commits: ' + u.remoteCommit + ')</span>';
+      } else {
+        $('update-status').innerHTML = '<span class="ok">เวอร์ชันล่าสุดแล้ว (' + (u.currentCommit || 'HEAD') + ')</span>';
+      }
+    }
+    const list = data.incidents || [];
+    if (list.length) {
+      const latest = list[0];
+      const time = new Date(latest.timestamp).toLocaleTimeString('th-TH');
+      $('heal-last').innerHTML = '<span class="' + (latest.result === 'failed' ? 'bad' : 'ok') + '">[' + time + '] ' + latest.action + '</span>';
+      const logBox = $('heal-log');
+      logBox.innerHTML = '';
+      for (const item of list.slice(0, 15)) {
+        const row = document.createElement('div');
+        const t = new Date(item.timestamp).toLocaleTimeString('th-TH');
+        const color = item.result === 'repaired' ? 'ok' : item.result === 'failed' ? 'bad' : 'warn';
+        row.innerHTML = '<span style="color:#888">[' + t + ']</span> <b class="' + color + '">[' + item.category + ']</b> ' + item.symptom + ' &rarr; <i>' + item.action + '</i>';
+        logBox.appendChild(row);
+      }
+    } else {
+      $('heal-last').textContent = 'ระบบทำงานราบรื่น ยังไม่มีข้อผิดพลาด';
+      $('heal-log').innerHTML = '<div style="padding:10px;color:#777">ไม่มีประวัติข้อผิดพลาด ระบบทำงานปกติ</div>';
+    }
+  } catch (err) {
+    $('update-status').innerHTML = '<span class="bad">' + err.message + '</span>';
+  }
+}
+
+$('btn-self-heal').onclick = async () => {
+  $('heal-msg').textContent = 'กำลังตรวจวินิจฉัยและรักษาตัวเอง...';
+  $('heal-msg').className = 'msg';
+  try {
+    const data = await api('/api/self-heal/doctor', { method: 'POST' });
+    const r = data.report;
+    const actions = r.actionsTaken && r.actionsTaken.length ? r.actionsTaken.join(', ') : 'ทุกระบบทำงานสมบูรณ์ ไม่พบจุดบกพร่อง';
+    $('heal-msg').innerHTML = '<span class="ok">การตรวจรักษาเสร็จสิ้น (' + r.overall + '): ' + actions + '</span>';
+    refreshSelfHeal();
+  } catch (err) {
+    $('heal-msg').innerHTML = '<span class="bad">' + err.message + '</span>';
+  }
+};
+
+$('btn-auto-update').onclick = async () => {
+  if (!confirm('ต้องการตรวจและอัปเดตโค้ดอัตโนมัติ? ระบบจะดึงโค้ดล่าสุด รันเทสต์ตรวจสอบ และรีสตาร์ทเซิร์ฟเวอร์ให้อัตโนมัติ')) return;
+  $('heal-msg').textContent = 'กำลังดึงโค้ดล่าสุดและรันชุดทดสอบความปลอดภัย...';
+  $('heal-msg').className = 'msg';
+  try {
+    const data = await api('/api/self-heal/update', { method: 'POST' });
+    const r = data.result;
+    if (r.ok) {
+      $('heal-msg').innerHTML = '<span class="ok">อัปเดตสำเร็จ (' + (r.commit || '') + ') กำลังรีสตาร์ทเพื่อนำมาใช้งาน...</span>';
+      setTimeout(() => location.reload(), 3000);
+    } else {
+      $('heal-msg').innerHTML = '<span class="bad">' + r.error + '</span>';
+    }
+  } catch (err) {
+    $('heal-msg').innerHTML = '<span class="bad">' + err.message + '</span>';
+  }
+};
+
+$('btn-safe-restart').onclick = async () => {
+  if (!confirm('ยืนยันรีสตาร์ทเซิร์ฟเวอร์ตู้ถ่าย? (หน้าจอจะเชื่อมต่อกลับมาเองใน 3 วินาที)')) return;
+  $('heal-msg').textContent = 'กำลังรีสตาร์ทเซิร์ฟเวอร์...';
+  try {
+    await api('/api/self-heal/restart', { method: 'POST' });
+    $('heal-msg').innerHTML = '<span class="ok">สั่งรีสตาร์ทแล้ว กำลังโหลดหน้าจอใหม่...</span>';
+    setTimeout(() => location.reload(), 3000);
+  } catch (err) {
+    $('heal-msg').innerHTML = '<span class="bad">' + err.message + '</span>';
+  }
+};
+
 const es = new EventSource('/api/events');
 es.onmessage = (ev) => applyState(JSON.parse(ev.data));
 loadConfig();
 refreshHealth();
 refreshUnfinished();
+refreshSelfHeal();
 setInterval(refreshHealth, 10000);
+setInterval(refreshSelfHeal, 15000);
 </script>
+
 </body>
 </html>

@@ -3,7 +3,8 @@ import sharp from 'sharp';
 import path from 'node:path';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { exec, spawn } from 'node:child_process';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { config, ROOT, saveEnv } from './config.js';
 import * as watch from './watcher.js';
 import * as nc from './nextcloud.js';
@@ -12,11 +13,20 @@ import { bus, snapshot, reset, startSession, captureSlot, deletePhoto, finishNow
 import { runPreflightChecks } from './preflight.js';
 import { generateCalibrationSheet } from './calibration.js';
 import { runCleanup, retentionConfig } from './retention.js';
-import { availableLayouts, customerChooses, defaultLayout, findLayout } from './layouts.js';
+import { availableLayouts, customerChooses, defaultLayout, findLayout, registerLayout } from './layouts.js';
+import { detectSlots, halfOf } from './template.js';
 import { promptPayPayload } from './promptpay.js';
 import { findByToken, resolveFile, fileList, renderPage } from './customer.js';
 import { writeZip, zipSize } from './zip.js';
 import QRCode from 'qrcode';
+import {
+  startSelfHealingWatchdog,
+  getIncidentHistory,
+  diagnoseAndHeal,
+  checkForUpdates,
+  applyUpdate,
+  scheduleSafeRestart,
+} from './self-heal.js';
 
 // ลายเซ็นของไฟล์หน้าจอ ใช้ให้เครื่องลูกข่ายรู้ว่าโค้ดที่ตัวเองรันอยู่เก่ากว่าที่เซิร์ฟเวอร์เสิร์ฟแล้ว
 // เคยเจอ: ตอนเซิร์ฟเวอร์ดับ service worker ของ iPad fallback ไปเสิร์ฟ app.js ตัวเก่า
@@ -32,7 +42,7 @@ function kioskBuildId() {
 const KIOSK_BUILD = kioskBuildId();
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '17mb' }));
 app.use(express.static(path.join(ROOT, 'kiosk')));
 let lastPreflight = null;
 const WEB_AUTH_COOKIE = 'photobooth_web_auth';
@@ -118,6 +128,12 @@ function blockLegacyMutationInIpadMode(req, res, next) {
     return res.status(403).json({ ok: false, error: 'โหมด iPad/Web รับคำสั่งผ่าน API ของอุปกรณ์เท่านั้น' });
   }
   next();
+}
+
+function requireOperatorAccess(req, res, next) {
+  const isPublic = Boolean(req.headers['cf-ray'] || req.headers['cf-connecting-ip']);
+  if (!isPublic) return next();
+  return requireWebKiosk(req, res, next);
 }
 
 app.post('/api/web/pair', (req, res) => {
@@ -329,7 +345,7 @@ app.post('/api/cleanup', blockLegacyMutationInIpadMode, async (req, res) => {
   }
 });
 
-app.get('/api/preflight', blockLegacyMutationInIpadMode, async (req, res) => {
+app.get('/api/preflight', requireOperatorAccess, async (req, res) => {
   try {
     const report = await runPreflightChecks({ deep: req.query.deep === 'true' });
     lastPreflight = report;
@@ -339,7 +355,7 @@ app.get('/api/preflight', blockLegacyMutationInIpadMode, async (req, res) => {
   }
 });
 
-app.get('/api/calibration', blockLegacyMutationInIpadMode, async (req, res) => {
+app.get('/api/calibration', requireOperatorAccess, async (req, res) => {
   try {
     const layout = req.query.layout || config.printLayout;
     const buf = await generateCalibrationSheet(layout);
@@ -349,7 +365,7 @@ app.get('/api/calibration', blockLegacyMutationInIpadMode, async (req, res) => {
   }
 });
 
-app.get('/api/unfinished', blockLegacyMutationInIpadMode, (req, res) => {
+app.get('/api/unfinished', requireOperatorAccess, (req, res) => {
   try {
     const list = scanUnfinishedSessions();
     res.json({ ok: true, unfinished: list });
@@ -358,7 +374,7 @@ app.get('/api/unfinished', blockLegacyMutationInIpadMode, (req, res) => {
   }
 });
 
-app.post('/api/recover/:id', blockLegacyMutationInIpadMode, async (req, res) => {
+app.post('/api/recover/:id', requireOperatorAccess, async (req, res) => {
   try {
     const result = await recoverSession(req.params.id, req.body?.action);
     res.json({ ok: true, result });
@@ -462,13 +478,13 @@ const LANDING_TEMPLATE = fs.readFileSync(path.join(ROOT, 'server', 'landing.html
 const GALLERY_TEMPLATE = fs.readFileSync(path.join(ROOT, 'server', 'gallery.html'), 'utf8');
 
 /** หน้ารับรูป — ไฟล์เสิร์ฟจากตู้เครื่องนี้ ไม่ต้องรอ NAS */
-app.get('/g', (req, res) => {
+app.get(['/g', '/g/:token'], (req, res) => {
   res
     .type('html')
     .set('Cache-Control', 'no-store')
     .set('Referrer-Policy', 'no-referrer')
     .set('X-Robots-Tag', 'noindex')
-    .send(renderPage(GALLERY_TEMPLATE));
+    .send(renderPage(GALLERY_TEMPLATE, { token: req.params.token || '' }));
 });
 
 /** รายการไฟล์ของเซสชันนั้น — ต้องมีกุญแจถึงจะเห็น */
@@ -479,6 +495,7 @@ app.get('/api/public/session/:token', (req, res) => {
     ok: true,
     takenAt: entry.journal.startedAt || null,
     keepDays: retentionConfig.localRetentionDays || null,
+    shareUrl: entry.journal.shareUrl || null,
     files: fileList(entry),
   });
 });
@@ -510,13 +527,14 @@ app.get('/api/public/session/:token/:name', (req, res) => {
 });
 
 
-app.get('/r', (req, res) => {
+app.get(['/r', '/r/:token'], (req, res) => {
   res
     .type('html')
     .set('Cache-Control', 'no-store')
     .set('Referrer-Policy', 'no-referrer')
     .set('X-Robots-Tag', 'noindex')
     .send(renderPage(LANDING_TEMPLATE, {
+      token: req.params.token || '',
       payEnabled: Boolean(config.promptpayId),
       amounts: config.payAmounts,
       max: config.payMaxAmount,
@@ -637,9 +655,9 @@ app.post('/api/mock-shot', blockLegacyMutationInIpadMode, async (req, res) => {
 });
 
 /** เปลี่ยนค่าตั้งต้นจากหน้า operator แล้วเขียนกลับ .env */
-app.post('/api/settings', blockLegacyMutationInIpadMode, (req, res) => {
+app.post('/api/settings', requireOperatorAccess, (req, res) => {
   try {
-    const allowed = ['WATCH_DIR', 'SHOTS', 'PRINT_SHOTS', 'EVENT_NAME', 'SESSION_IDLE_SECONDS', 'PRINT_LAYOUT', 'PRINT_THEME_COLOR', 'REVIEW_SECONDS', 'CAPTURE_SOURCE', 'COUNTDOWN', 'KIOSK_MODE', 'WEB_CAMERA_FACING', 'WEB_MIRROR', 'CARD_LAYOUT', 'CARD_LAYOUT_CHOICE', 'SHUTTER'];
+    const allowed = ['WATCH_DIR', 'SHOTS', 'PRINT_SHOTS', 'EVENT_NAME', 'SESSION_IDLE_SECONDS', 'PRINT_LAYOUT', 'PRINT_THEME_COLOR', 'REVIEW_SECONDS', 'CAPTURE_SOURCE', 'BYPASS_CAMERA', 'COUNTDOWN', 'KIOSK_MODE', 'WEB_CAMERA_FACING', 'WEB_MIRROR', 'CARD_LAYOUT', 'CARD_LAYOUT_CHOICE', 'SHUTTER'];
     const patch = {};
     for (const key of allowed) {
       if (req.body && req.body[key] !== undefined && req.body[key] !== null) patch[key] = req.body[key];
@@ -659,6 +677,51 @@ app.post('/api/settings', blockLegacyMutationInIpadMode, (req, res) => {
     res.json({ ok: true, config: { watchDir: config.watchDir, shots: config.shots, eventName: config.eventName } });
   } catch (err) {
     res.status(400).json({ ok: false, error: err.message });
+  }
+});
+
+/** เพิ่มไฟล์เทมเพลต PNG จากหน้าจอช่าง */
+app.post('/api/layouts', requireOperatorAccess, async (req, res) => {
+  let tempPath = null;
+  let templatePath = null;
+  try {
+    const name = String(req.body?.name || '').trim();
+    const half = String(req.body?.half || 'left');
+    const encoded = String(req.body?.image || '');
+    const match = encoded.match(/^data:image\/png;base64,([A-Za-z0-9+/=]+)$/);
+    if (!name) return res.status(400).json({ ok: false, error: 'กรุณาตั้งชื่อธีม' });
+    if (name.length > 80) return res.status(400).json({ ok: false, error: 'ชื่อธีมยาวเกิน 80 ตัวอักษร' });
+    if (!match) return res.status(400).json({ ok: false, error: 'กรุณาเลือกไฟล์ PNG' });
+    if (!['left', 'right', 'full'].includes(half)) return res.status(400).json({ ok: false, error: 'รูปแบบภาพไม่ถูกต้อง' });
+
+    const image = Buffer.from(match[1], 'base64');
+    if (!image.length || image.length > 12 * 1024 * 1024) {
+      return res.status(400).json({ ok: false, error: 'ไฟล์ต้องมีขนาดไม่เกิน 12 MB' });
+    }
+    const meta = await sharp(image, { limitInputPixels: 20_000_000 }).metadata();
+    if (meta.format !== 'png' || !meta.width || !meta.height || meta.width < 300 || meta.height < 500) {
+      return res.status(400).json({ ok: false, error: 'ไฟล์ PNG ต้องมีขนาดอย่างน้อย 300 × 500 พิกเซล' });
+    }
+
+    const id = `custom-${randomUUID().slice(0, 8)}`;
+    const relativeTemplate = `assets/${id}.png`;
+    templatePath = path.join(ROOT, relativeTemplate);
+    tempPath = `${templatePath}.tmp`;
+    await fsp.writeFile(tempPath, image, { flag: 'wx' });
+    const detected = await detectSlots(tempPath);
+    const selected = half === 'full' ? detected : halfOf(detected, half);
+    if (!selected.slots.length) {
+      throw new Error('ไม่พบช่องรูปสีขาวในส่วนที่เลือก กรุณาใช้ไฟล์ที่เว้นช่องรูปเป็นสีขาว');
+    }
+
+    await fsp.rename(tempPath, templatePath);
+    tempPath = null;
+    registerLayout({ id, name, template: relativeTemplate, half });
+    res.json({ ok: true, layout: { id, name, preview: `/api/layout/${id}/preview.jpg` }, slots: selected.slots.length });
+  } catch (err) {
+    if (tempPath) await fsp.rm(tempPath, { force: true }).catch(() => {});
+    if (templatePath) await fsp.rm(templatePath, { force: true }).catch(() => {});
+    res.status(400).json({ ok: false, error: err.message || 'เพิ่มธีมไม่สำเร็จ' });
   }
 });
 
@@ -689,10 +752,79 @@ app.get('/api/browse', blockLegacyMutationInIpadMode, async (req, res) => {
 app.get('/api/session/:id/file/:name', requirePairedWhenSelfService, (req, res) => {
   const name = path.basename(req.params.name);
   const id = path.basename(req.params.id);
-  const file = path.join(config.sessionsDir, id, name);
-  if (!file.startsWith(config.sessionsDir) || !fs.existsSync(file)) return res.status(404).end();
+  const file = path.resolve(config.sessionsDir, id, name);
+  const resolvedSessionsDir = path.resolve(config.sessionsDir);
+  if (!file.startsWith(resolvedSessionsDir + path.sep) || !fs.existsSync(file)) return res.status(404).end();
   res.sendFile(file);
 });
+
+// ── ระบบรักษาตัวเองและอัปเดตอัตโนมัติ (Autonomous Self-Healing & Auto-Update) ──
+app.get('/api/self-heal/status', requireOperatorAccess, async (req, res) => {
+  try {
+    const update = await checkForUpdates().catch((e) => ({ updateAvailable: false, error: e.message }));
+    res.json({
+      ok: true,
+      incidents: getIncidentHistory(),
+      update,
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post('/api/self-heal/doctor', requireOperatorAccess, async (req, res) => {
+  try {
+    const report = await diagnoseAndHeal();
+    res.json({ ok: true, report });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post('/api/self-heal/update', requireOperatorAccess, async (req, res) => {
+  try {
+    const result = await applyUpdate({ autoRestart: req.body?.autoRestart !== false });
+    res.json({ ok: true, result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post('/api/self-heal/restart', requireOperatorAccess, (req, res) => {
+  try {
+    scheduleSafeRestart(1000);
+    res.json({ ok: true, message: 'เซิร์ฟเวอร์กำลังรีสตาร์ทอย่างปลอดภัย...' });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+function ensureCloudflareTunnel() {
+  if (!config.publicUrl) return;
+  const cfExe = path.join(process.env.LOCALAPPDATA || '', 'PhotoBooth', 'bin', 'cloudflared.exe');
+  const cfConfig = path.join(process.env.USERPROFILE || '', '.cloudflared', 'config.yml');
+  const logDir = path.join(ROOT, 'logs');
+  const logFile = path.join(logDir, 'tunnel.log');
+  if (!fs.existsSync(cfExe) || !fs.existsSync(cfConfig)) return;
+
+  exec('tasklist /FI "IMAGENAME eq cloudflared.exe" /NH', (err, stdout) => {
+    if (!err && stdout && stdout.toLowerCase().includes('cloudflared.exe')) return;
+    try {
+      fs.mkdirSync(logDir, { recursive: true });
+      const out = fs.openSync(logFile, 'a');
+      const errFd = fs.openSync(logFile, 'a');
+      const p = spawn(cfExe, ['tunnel', '--config', cfConfig, '--logfile', logFile, '--loglevel', 'info', 'run'], {
+        detached: true,
+        stdio: ['ignore', out, errFd],
+        windowsHide: true,
+      });
+      p.unref();
+      console.log(`[tunnel] cloudflared เริ่มทำงานอัตโนมัติ (PID: ${p.pid})`);
+    } catch (e) {
+      console.error('[tunnel] เริ่ม cloudflared ไม่สำเร็จ:', e.message);
+    }
+  });
+}
 
 app.listen(config.port, config.host, () => {
   console.log(`photobooth  จอลูกค้า http://${config.host}:${config.port}  |  จอช่าง http://${config.host}:${config.port}/operator.html`);
@@ -705,4 +837,8 @@ app.listen(config.port, config.host, () => {
   }
   console.log(`  Nextcloud: ${config.nc.base || '(ยังไม่ได้ตั้ง)'} (โฟลเดอร์ ${config.nc.root})`);
   console.log(`  ${config.shots} ช็อต/เซสชัน  โหมดหน้าจอ: ${config.kioskMode}`);
+
+  ensureCloudflareTunnel();
+  startSelfHealingWatchdog();
 });
+

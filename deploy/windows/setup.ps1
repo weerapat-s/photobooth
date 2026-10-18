@@ -85,14 +85,14 @@ function New-PairCode {
 
 function Set-EnvLine([System.Collections.Generic.List[string]]$lines, [string]$name, [string]$value) {
   for ($i = 0; $i -lt $lines.Count; $i++) {
-    if ($lines[$i] -match ('^' + [regex]::Escape($name) + '=')) { $lines[$i] = "$name=$value"; return }
+    if ($lines[$i] -match ('^\s*' + [regex]::Escape($name) + '\s*=')) { $lines[$i] = "$name=$value"; return }
   }
   $lines.Add("$name=$value")
 }
 
 function Get-EnvValue([string]$path, [string]$name) {
-  $match = Select-String -LiteralPath $path -Pattern ('^' + [regex]::Escape($name) + '=(.*)$') | Select-Object -First 1
-  if ($match) { return $match.Matches[0].Groups[1].Value.Trim() }
+  $match = Select-String -LiteralPath $path -Pattern ('^\s*' + [regex]::Escape($name) + '\s*=\s*(.*)$') | Select-Object -First 1
+  if ($match) { return $match.Matches[0].Groups[1].Value.Trim().Trim('"').Trim("'") }
   return ''
 }
 

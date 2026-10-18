@@ -426,11 +426,13 @@ function applyState(state) {
   if (state.phase === 'done' && state.session) {
     if (shownSessionId !== state.session.id) {
       shownSessionId = state.session.id;
-      $('qr').src = state.session.qr || '';
-      $('share-url').textContent = state.session.qrUrl || state.session.shareUrl || '';
-      $('card').src = state.session.previews[0] || '';
       doneDeadline = Date.now() + (cfg.reviewSeconds || 90) * 1000;
     }
+    const cardSrc = state.session.cardUrl || (state.session.files?.find((f) => f.kind === 'card') ? `/api/session/${state.session.id}/file/card.jpg` : state.session.previews[0] || '');
+    if (cardSrc && $('card').src !== cardSrc) $('card').src = cardSrc;
+    if (state.session.qr && $('qr').src !== state.session.qr) $('qr').src = state.session.qr;
+    const shareText = state.session.qrUrl || state.session.shareUrl || '';
+    if (shareText) $('share-url').textContent = shareText;
     show('done');
     return;
   }

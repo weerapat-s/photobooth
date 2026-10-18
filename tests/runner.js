@@ -18,6 +18,7 @@ const testFiles = [
   'tests/public-kiosk.spec.js',
   'tests/preflight.spec.js',
   'tests/retention.spec.js',
+  'tests/self-heal.spec.js',
 ];
 
 async function runAllTests() {

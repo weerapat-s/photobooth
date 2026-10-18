@@ -114,3 +114,18 @@ export function customerChooses() {
 export function findLayout(id) {
   return availableLayouts().find((layout) => layout.id === String(id)) || null;
 }
+
+/** ลงทะเบียนเทมเพลตที่เพิ่มจากหน้าจอช่าง */
+export function registerLayout({ id, name, template, half = 'left', scale = 1 }) {
+  const { file, raw } = readFile();
+  if (raw === null) throw new Error('ไม่พบไฟล์รายการเลย์เอาต์');
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) throw new Error('id เลย์เอาต์ไม่ถูกต้อง');
+  if (!HALVES.has(half)) throw new Error('half ต้องเป็น left, right หรือ full');
+  if (!template || path.isAbsolute(template) || template.includes('..')) throw new Error('path เทมเพลตไม่ถูกต้อง');
+
+  const list = JSON.parse(raw);
+  if (list.some((entry) => entry.id === id)) throw new Error('มี id เลย์เอาต์นี้แล้ว');
+  list.push({ id, name: String(name || id), template, half, scale: Number(scale) > 0 ? Number(scale) : 1 });
+  fs.writeFileSync(file, `${JSON.stringify(list, null, 2)}\n`, 'utf8');
+  cache = null;
+}

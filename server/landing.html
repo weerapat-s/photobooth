@@ -832,6 +832,16 @@
       <p class="lede">ดาวน์โหลดรูปและวิดีโอได้ฟรี หรือร่วมส่งกำลังใจสนับสนุนทีมงานได้ตามสะดวกใจนะคะ 💖</p>
     </div>
 
+    <!-- Immediate direct access button -->
+    <a class="primary" id="skip-top" href="#" style="text-decoration:none; display:flex; align-items:center; justify-content:center; gap:8px; padding:15px; font-weight:700; border-radius:var(--radius-pill); font-size:1.05rem; margin:14px 0 16px 0; background:var(--primary-gradient); color:#fff; box-shadow:0 10px 24px -6px var(--primary-glow);">
+      <span>📸 ดูและรับรูปของคุณเลย (ฟรี)</span>
+      <span class="btn-icon-right">➔</span>
+    </a>
+
+    <div style="text-align: center; margin-bottom: 14px;">
+      <span style="font-size: 0.85rem; color: var(--muted); font-weight: 600;">หรือร่วมส่งกำลังใจให้ทีมงาน (ตามสะดวกใจ) 💖</span>
+    </div>
+
     <!-- Predefined amounts grid -->
     <div class="amounts" id="amounts"></div>
 
@@ -975,8 +985,25 @@
   const BOOTH = __BOOTH_CONFIG__;
   const $ = (id) => document.getElementById(id);
 
-  // กุญแจของเซสชันอยู่หลัง # เท่านั้น เบราว์เซอร์ไม่ส่งส่วนนี้ไปกับที่อยู่หน้าเว็บ
-  const token = decodeURIComponent(location.hash.slice(1));
+  function extractToken() {
+    if (BOOTH && BOOTH.token && /^[a-f0-9]{32}$/i.test(String(BOOTH.token).trim())) {
+      return String(BOOTH.token).trim().toLowerCase();
+    }
+    const raw = (location.hash || '').replace(/^#\/?/, '').split('?')[0].split('&')[0].trim();
+    if (/^[a-f0-9]{32}$/i.test(raw)) return raw.toLowerCase();
+
+    const params = new URLSearchParams(location.search);
+    const q = params.get('token') || params.get('t') || params.get('session');
+    if (q && /^[a-f0-9]{32}$/i.test(q.trim())) return q.trim().toLowerCase();
+
+    const parts = location.pathname.split('/').filter(Boolean);
+    for (const part of parts) {
+      if (/^[a-f0-9]{32}$/i.test(part.trim())) return part.trim().toLowerCase();
+    }
+    return '';
+  }
+
+  const token = extractToken();
   const valid = /^[a-f0-9]{32}$/.test(token);
   // หน้ารับรูปเสิร์ฟจากตู้เครื่องเดียวกัน ส่งกุญแจต่อไปหลัง # เหมือนเดิม
   const photosUrl = valid ? `/g#${token}` : null;
@@ -1112,8 +1139,9 @@
     openBankApp(selectedBank.scheme, selectedBank.name);
   };
 
-  for (const id of ['skip', 'paid']) {
-    $(id).onclick = (event) => { event.preventDefault(); goPhotos(); };
+  for (const id of ['skip', 'skip-top', 'paid']) {
+    const el = $(id);
+    if (el) el.onclick = (event) => { event.preventDefault(); goPhotos(); };
   }
   $('skip-2').onclick = goPhotos;
   $('change').onclick = () => show('step-ask');

@@ -1,5 +1,12 @@
 [
   {
+    "id": "alumni-reunion-2026",
+    "name": "Alumni Reunion 2026 — SIET × KMITL",
+    "template": "assets/alumni-reunion-template.png",
+    "half": "left",
+    "scale": 1
+  },
+  {
     "id": "graduation",
     "name": "รับปริญญา",
     "template": "assets/graduation-template.png",

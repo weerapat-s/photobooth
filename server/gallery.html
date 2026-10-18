@@ -198,6 +198,29 @@
     background: rgba(255, 255, 255, 0.08);
   }
 
+  .btn.cloud {
+    background: linear-gradient(135deg, #0082c9 0%, #006097 100%);
+    color: #ffffff;
+    box-shadow: 0 10px 24px -6px rgba(0, 130, 201, 0.45);
+  }
+  .btn.cloud:hover {
+    box-shadow: 0 14px 28px -6px rgba(0, 130, 201, 0.55);
+    transform: translateY(-2px);
+  }
+
+  .line-banner {
+    background: rgba(6, 199, 85, 0.14);
+    border: 1px solid rgba(6, 199, 85, 0.35);
+    border-radius: var(--radius-lg);
+    padding: 13px 16px;
+    font-size: 0.88rem;
+    color: #eafff2;
+    line-height: 1.5;
+  }
+  .line-banner b {
+    color: #10B981;
+  }
+
   .save-hint {
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid var(--line);
@@ -285,6 +308,11 @@
   </section>
 
   <div id="content" hidden>
+    <div id="line-banner" class="line-banner" hidden>
+      <strong>📲 กำลังเปิดผ่านแอป LINE</strong><br>
+      หากกดปุ่มดาวน์โหลดแล้วไม่ลงเครื่อง ให้แตะจุด 3 จุด (⋮ หรือ ⋯) มุมบนขวา แล้วเลือก <b>"เปิดในเบราว์เซอร์อื่น"</b> (Safari / Chrome) หรือแตะค้างที่รูปภาพเพื่อบันทึกรูปได้เลยค่ะ
+    </div>
+
     <header>
       <div class="event-pill">
         <span class="event" id="event">PHOTO BOOTH</span>
@@ -321,6 +349,20 @@
       <span>ดาวน์โหลดทั้งหมด (.zip)</span>
     </a>
 
+    <!-- Nextcloud Backup Link -->
+    <div class="item" id="cloud-item" hidden style="background: rgba(0, 130, 201, 0.08); border-color: rgba(0, 130, 201, 0.25);">
+      <div style="text-align: center; margin-bottom: 4px;">
+        <span style="font-size: 0.88rem; color: #72c6f5; font-weight: 700;">☁️ อัลบั้มสำรองบน Nextcloud</span>
+      </div>
+      <a class="btn cloud" id="dl-cloud" target="_blank" rel="noopener noreferrer">
+        <span>☁️</span>
+        <span>ดูและดาวน์โหลดบน Cloud Album</span>
+      </a>
+      <p style="font-size: 0.8rem; color: var(--muted); text-align: center; margin-top: 4px;">
+        ไฟล์ต้นฉบับคมชัดสูงสุด โหลดได้ตลอดเวลาแม้ตู้ถ่ายรูปจะปิดแล้ว
+      </p>
+    </div>
+
     <div class="foot">
       <p id="expiry"></p>
       <p>เก็บลิงก์นี้ไว้เปิดซ้ำได้ ตราบใดที่ตู้ยังเปิดอยู่นะคะ ✨</p>
@@ -332,16 +374,66 @@
   const BOOTH = __BOOTH_CONFIG__;
   const $ = (id) => document.getElementById(id);
 
-  // กุญแจของเซสชันอยู่หลัง # เบราว์เซอร์ไม่ส่งส่วนนี้ไปกับที่อยู่หน้าเว็บ
-  const token = decodeURIComponent(location.hash.slice(1));
+  function extractToken() {
+    if (BOOTH && BOOTH.token && /^[a-f0-9]{32}$/i.test(String(BOOTH.token).trim())) {
+      return String(BOOTH.token).trim().toLowerCase();
+    }
+    const raw = (location.hash || '').replace(/^#\/?/, '').split('?')[0].split('&')[0].trim();
+    if (/^[a-f0-9]{32}$/i.test(raw)) return raw.toLowerCase();
+
+    const params = new URLSearchParams(location.search);
+    const q = params.get('token') || params.get('t') || params.get('session');
+    if (q && /^[a-f0-9]{32}$/i.test(q.trim())) return q.trim().toLowerCase();
+
+    const parts = location.pathname.split('/').filter(Boolean);
+    for (const part of parts) {
+      if (/^[a-f0-9]{32}$/i.test(part.trim())) return part.trim().toLowerCase();
+    }
+    return '';
+  }
+
+  const token = extractToken();
   const valid = /^[a-f0-9]{32}$/.test(token);
   const fileUrl = (name) => `/api/public/session/${token}/${encodeURIComponent(name)}`;
 
   const show = (id) => { for (const key of ['loading', 'bad', 'content']) $(key).hidden = key !== id; };
 
-  // iOS บันทึกวิดีโอจากปุ่มดาวน์โหลดตรง ๆ ไม่ได้ ต้องบอกวิธีกดค้าง
+  if (/Line\//i.test(navigator.userAgent)) {
+    $('line-banner').hidden = false;
+  }
   if (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) {
     $('ios-hint').hidden = false;
+  }
+
+  const canShareFiles = typeof navigator.share === 'function' && typeof navigator.canShare === 'function' && (() => {
+    try {
+      const testFile = new File([''], 'test.jpg', { type: 'image/jpeg' });
+      return navigator.canShare({ files: [testFile] });
+    } catch {
+      return false;
+    }
+  })();
+
+  async function shareFile(url, filename, mimeType) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) {
+        const blob = await res.blob();
+        const file = new File([blob], filename, { type: mimeType });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: filename });
+        }
+      }
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      // If share failed, trigger direct download
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
   }
 
   async function load() {
@@ -368,11 +460,23 @@
     if (names.has('card.jpg')) {
       $('card').src = fileUrl('card.jpg');
       $('dl-card').href = fileUrl('card.jpg');
+      if (canShareFiles) {
+        $('dl-card').onclick = (e) => {
+          e.preventDefault();
+          shareFile(fileUrl('card.jpg'), 'card.jpg', 'image/jpeg');
+        };
+      }
       $('card-item').hidden = false;
     }
     if (names.has('video.mp4')) {
       $('video').src = fileUrl('video.mp4');
       $('dl-video').href = fileUrl('video.mp4');
+      if (canShareFiles) {
+        $('dl-video').onclick = (e) => {
+          e.preventDefault();
+          shareFile(fileUrl('video.mp4'), 'video.mp4', 'video/mp4');
+        };
+      }
       $('video-item').hidden = false;
     }
 
@@ -383,6 +487,12 @@
         const link = document.createElement('a');
         link.href = fileUrl(shot.name);
         link.download = shot.name;
+        if (canShareFiles) {
+          link.onclick = (e) => {
+            e.preventDefault();
+            shareFile(fileUrl(shot.name), shot.name, 'image/jpeg');
+          };
+        }
         const img = document.createElement('img');
         img.src = fileUrl(shot.name);
         img.alt = shot.name;
@@ -393,6 +503,12 @@
     }
 
     $('dl-all').href = `/api/public/session/${token}/all.zip`;
+
+    if (data.shareUrl) {
+      $('dl-cloud').href = data.shareUrl;
+      $('cloud-item').hidden = false;
+    }
+
     show('content');
   }
 

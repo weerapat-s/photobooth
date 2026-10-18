@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
@@ -82,6 +83,7 @@ export function snapshot(extra = {}) {
       slots,
       previews: slots.filter((slot) => slot.preview).map((slot) => slot.preview),
       activePreview: state.shot > 0 ? slots[state.shot - 1]?.preview || null : null,
+      cardUrl: s.cardFile ? `/api/session/${s.id}/file/card.jpg` : null,
       shareUrl: s.shareUrl || null,
       qrUrl: s.qrUrl || s.shareUrl || null,
       qr: s.qr || null,
@@ -369,9 +371,15 @@ async function finish(reason) {
   }
 
   if (!s.videoFile || !filterExistingPaths([s.videoFile]).length) {
-    const video = await makeVideoFromFrames(validPhotos, s.localDir);
-    s.videoFile = video.mp4;
-    s.gifFile = video.gif || null;
+    try {
+      const video = await makeVideoFromFrames(validPhotos, s.localDir);
+      s.videoFile = video.mp4;
+      s.gifFile = video.gif || null;
+    } catch (vidErr) {
+      console.warn('[session] ไม่สามารถสร้างวิดีโอได้ (ข้ามไปสร้างการ์ดและ QR ต่อ):', vidErr.message);
+      s.videoFile = null;
+      s.gifFile = null;
+    }
   }
 
   // รูปพร้อมส่งให้ลูกค้าแล้วจากเครื่องนี้ การอัปขึ้นคลาวด์เป็นการสำรองไว้ทีหลัง
@@ -392,10 +400,12 @@ async function finish(reason) {
       (await nc.list(remoteDir).catch(() => [])).filter((item) => !item.isDir).map((item) => item.name),
     );
 
-    const uploads = [[s.cardFile, 'card.jpg'], [s.videoFile, 'video.mp4']];
-    if (s.gifFile) uploads.push([s.gifFile, 'video.gif']);
+    const uploads = [];
+    if (s.cardFile && fs.existsSync(s.cardFile)) uploads.push([s.cardFile, 'card.jpg']);
+    if (s.videoFile && fs.existsSync(s.videoFile)) uploads.push([s.videoFile, 'video.mp4']);
+    if (s.gifFile && fs.existsSync(s.gifFile)) uploads.push([s.gifFile, 'video.gif']);
     s.photos.forEach((p, i) => {
-      if (p) uploads.push([p, `photo-${i + 1}${path.extname(p).toLowerCase()}`]);
+      if (p && fs.existsSync(p)) uploads.push([p, `photo-${i + 1}${path.extname(p).toLowerCase()}`]);
     });
     s.uploaded = (Array.isArray(s.uploaded) ? s.uploaded : []).filter((name) => existingRemoteNames.has(name));
     if (s.forceUploadAll) s.uploaded = [];
@@ -522,6 +532,7 @@ export async function recoverSession(sessionId, action = 'resume') {
   // โหลดเซสชันเดิมกลับมาเป็น active session
   const s = {
     id: journal.id,
+    publicToken: journal.publicToken || randomBytes(16).toString('hex'),
     localDir: sessionDir,
     rawDir: path.join(config.captureDir, journal.id),
     startedAt: journal.startedAt || Date.now(),
